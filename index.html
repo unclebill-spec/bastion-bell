@@ -824,6 +824,7 @@
 </script>
 <script>
 (() => {
+ window.__bastionBoot = { phase: 'script', webdriver: navigator.webdriver === true, ua: navigator.userAgent || '' };
  if (typeof THREE === 'undefined') {
  document.body.innerHTML = '';
  const errBox = document.createElement('div');
@@ -1242,13 +1243,17 @@
  scene.fog = new THREE.FogExp2(0x9bc4e2, 0.0085);
 
  const camera = new THREE.PerspectiveCamera(settings.fov, window.innerWidth / window.innerHeight, 0.1, 240);
- const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+ // Suite Chrome is headless. Playwright sometimes hides webdriver, so also match
+ // the HeadlessChrome token. Shadow maps stay on for a normal browser.
+ const headlessDriver = navigator.webdriver === true || /HeadlessChrome/i.test(navigator.userAgent || '');
+ const renderer = new THREE.WebGLRenderer({ antialias: !headlessDriver, powerPreference: 'high-performance' });
  renderer.setSize(window.innerWidth, window.innerHeight);
- renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
- renderer.shadowMap.enabled = true;
+ renderer.setPixelRatio(headlessDriver ? 1 : Math.min(window.devicePixelRatio, 2));
+ renderer.shadowMap.enabled = !headlessDriver;
  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
  document.body.appendChild(renderer.domElement);
  renderer.domElement.style.pointerEvents = 'none';
+ if (window.__bastionBoot) window.__bastionBoot.phase = 'renderer';
 
  scene.add(new THREE.HemisphereLight(0xdbeeff, 0x3b4d34, 0.72));
 
@@ -1289,6 +1294,9 @@
  let baseVoxelCount = 0;
  let courtyard = null;
  let groundGrid = null;
+ let activeTerrain = null;
+ let activeField = null;
+ let treeShapes = {};
  const iceZones = [];
  const snowZones = [];
  const bridgeIce = [];
@@ -1380,6 +1388,335 @@
  const STAMP_ORDER = ['crate', 'rubble', 'step05', 'step10', 'ice', 'snow'];
  let seedNonce = 1;
 
+ // Seeded meadow shapes. The gate stays at z=-25; width and depth change around it.
+ const FIELD_SHAPE_LIST = [
+ { id: 'large', halfX: 46, depth: 54, monsterMul: 1.8 },
+ { id: 'long', halfX: 17, depth: 76, monsterMul: 1 },
+ { id: 'wide', halfX: 56, depth: 28, monsterMul: 1 }
+ ];
+ function fieldForCode(code) {
+ const key = String(code || 'FALLBACK');
+ const idx = hashSeed(key + ':shape') % FIELD_SHAPE_LIST.length;
+ const spec = FIELD_SHAPE_LIST[idx];
+ const zNorth = -25;
+ return {
+ id: spec.id,
+ halfX: spec.halfX,
+ depth: spec.depth,
+ width: spec.halfX * 2,
+ zNorth: zNorth,
+ zSouth: zNorth - spec.depth,
+ monsterMul: spec.monsterMul
+ };
+ }
+ function currentField() {
+ if (activeField) return activeField;
+ activeField = fieldForCode('FALLBACK');
+ return activeField;
+ }
+ function playableEnvelope() {
+ const f = currentField();
+ return {
+ minX: Math.min(-36.8, -f.halfX - 1.5),
+ maxX: Math.max(36.8, f.halfX + 1.5),
+ minZ: Math.min(-59.5, f.zSouth - 2),
+ maxZ: 20.2
+ };
+ }
+ function waveMonsterCount(wave, field) {
+ const f = field || currentField();
+ const diff = settings.difficulty || 1;
+ const w = wave || 1;
+ const base = Math.max(6, Math.round((8 + w * 4) * (0.75 + diff * 0.25)));
+ const mul = f.monsterMul || 1;
+ return Math.max(base, Math.round(base * mul));
+ }
+ function fieldSummary(field) {
+ const f = field || currentField();
+ const baseField = { monsterMul: 1 };
+ return {
+ shape: f.id,
+ halfX: f.halfX,
+ width: f.width,
+ depth: f.depth,
+ zNorth: f.zNorth,
+ zSouth: f.zSouth,
+ monsterMul: f.monsterMul,
+ budget: waveMonsterCount(1, f),
+ baseBudget: waveMonsterCount(1, baseField)
+ };
+ }
+ function findFieldShapeSeeds() {
+ const alph = SEED_ALPH;
+ const found = {};
+ const limit = alph.length * alph.length;
+ for (let n = 0; n < limit && (!found.large || !found.long || !found.wide); n++) {
+ const word = alph[n % alph.length] + alph[Math.floor(n / alph.length) % alph.length] + alph[(n * 3) % alph.length] + alph[(n * 5 + 1) % alph.length];
+ const code = 'BELL-' + word;
+ const id = fieldForCode(code).id;
+ if (!found[id]) found[id] = code;
+ }
+ return found;
+ }
+
+ function buildTerrain(code, avoid) {
+ const f = fieldForCode(code || 'FALLBACK');
+ activeField = f;
+ const rng = mulberry32(hashSeed(String(code || 'FALLBACK') + ':terrain'));
+ const pts = avoid || [];
+ const hills = [];
+ const gullies = [];
+ const halfW = 1.7;
+ function farFrom(list, x, z, minD) {
+ for (let i = 0; i < list.length; i++) {
+ if (Math.hypot(list[i].x - x, list[i].z - z) < minD) return false;
+ }
+ return true;
+ }
+ function hitsAvoid(x, z, minD) {
+ for (let i = 0; i < pts.length; i++) {
+ if (Math.hypot(pts[i].x - x, pts[i].z - z) < minD) return true;
+ }
+ return false;
+ }
+ function streamHits(z) {
+ for (let i = 0; i < pts.length; i++) {
+ if (Math.abs(pts[i].z - z) < halfW + 1.6 && Math.abs(pts[i].x) <= f.halfX) return true;
+ }
+ return false;
+ }
+ let streamZ = -38.6 - rng() * 4.6;
+ for (let n = 0; n < 6 && streamHits(streamZ); n++) streamZ += (n % 2 === 0 ? 0.4 : -0.4);
+ streamZ = Math.round(streamZ * 10) / 10;
+ if (streamZ > -38.2) streamZ = -38.2;
+ if (streamZ < -43.6) streamZ = -43.6;
+ const stream = { z: streamZ, halfW: halfW, x0: -f.halfX - 1, x1: f.halfX + 1 };
+ function shelf(side, zWant, kind) {
+ const maxR = Math.min(kind === 'hill' ? 4.9 : 4.5, Math.max(4.4, f.halfX * 0.22));
+ const r = Math.round((maxR - rng() * 0.12) * 10) / 10;
+ const h = kind === 'hill' ? (1.9 + rng() * 0.35) : -(0.86 + rng() * 0.12);
+ const edge = Math.max(9.4, f.halfX - r - 1.6);
+ let x = side * (edge - rng() * Math.min(2.8, Math.max(0, edge - 9.4)));
+ if (Math.abs(x) < 9.2) x = side * 9.2;
+ if (Math.abs(x) > edge) x = side * edge;
+ let z = zWant + (rng() - 0.5) * 0.7;
+ const zMin = Math.min(-32.4, f.zSouth + r + 2.2);
+ const zMax = -31.2;
+ if (z < zMin) z = zMin;
+ if (z > zMax) z = zMax;
+ if (Math.abs(z - streamZ) < r + 1.6) {
+ z = streamZ < z ? Math.min(zMax, streamZ + r + 1.8) : Math.max(zMin, streamZ - r - 1.8);
+ if (z < zMin) z = zMin;
+ if (z > zMax) z = zMax;
+ }
+ for (let n = 0; n < 6 && hitsAvoid(x, z, r + 0.6); n++) x = side * Math.max(9.2, edge - n * 0.4);
+ return { x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, r: r, h: Math.round(h * 100) / 100 };
+ }
+ hills.push(shelf(-1, -32.4, 'hill'));
+ hills.push(shelf(1, f.zSouth + 8.5, 'hill'));
+ gullies.push(shelf(1, -32.6, 'gully'));
+ gullies.push(shelf(-1, f.zSouth + 9.2, 'gully'));
+ const sideX = Math.min(f.halfX - 3.4, Math.max(9.2, f.halfX * 0.58));
+ const bridges = [
+ { x: 0, z: streamZ, hx: Math.min(4.7, f.halfX * 0.32), hz: halfW + 1.2 },
+ { x: Math.round((-sideX) * 10) / 10, z: streamZ, hx: 2.3, hz: halfW + 1.05 },
+ { x: Math.round(sideX * 10) / 10, z: streamZ, hx: 2.3, hz: halfW + 1.05 }
+ ];
+ const want = ['pine', 'oak', 'birch', 'willow', 'oak', 'birch', 'willow'];
+ const trees = [];
+ const xTree = Math.max(9.2, f.halfX - 2.4);
+ function treeBlocked(x, z) {
+ if (Math.abs(x) < 8.2 || Math.abs(x) > xTree) return true;
+ if (z > -29.5 || z < f.zSouth + 3.2) return true;
+ if (Math.abs(z - streamZ) < halfW + 2.4) return true;
+ if (!farFrom(hills, x, z, 4.2)) return true;
+ if (!farFrom(gullies, x, z, 3.6)) return true;
+ if (hitsAvoid(x, z, 3.4)) return true;
+ for (let i = 0; i < trees.length; i++) {
+ if (Math.hypot(trees[i].x - x, trees[i].z - z) < 4.8) return true;
+ }
+ return false;
+ }
+ const spanZ = Math.max(4, (-29.5) - (f.zSouth + 3.4));
+ for (let i = 0; i < want.length; i++) {
+ let placed = false;
+ for (let attempt = 0; attempt < 28 && !placed; attempt++) {
+ const side = rng() < 0.5 ? -1 : 1;
+ const x = side * (8.4 + rng() * Math.max(1.2, xTree - 8.4));
+ const z = (f.zSouth + 3.4) + rng() * spanZ;
+ if (treeBlocked(x, z)) continue;
+ trees.push({ type: want[i], x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 });
+ placed = true;
+ }
+ if (!placed) {
+ const spots = [
+ { x: -Math.min(xTree, 12), z: -36 },
+ { x: Math.min(xTree, 12), z: -36 },
+ { x: -Math.min(xTree, 10), z: -48 },
+ { x: Math.min(xTree, 10), z: -48 },
+ { x: -Math.min(xTree, 11), z: -31.5 },
+ { x: Math.min(xTree, 11), z: Math.max(f.zSouth + 4, -50) }
+ ];
+ let spot = spots[i % spots.length];
+ for (let s = 0; s < spots.length; s++) {
+ const cand = spots[(i + s) % spots.length];
+ if (!treeBlocked(cand.x, cand.z)) { spot = cand; break; }
+ }
+ trees.push({ type: want[i], x: Math.round(spot.x * 10) / 10, z: Math.round(spot.z * 10) / 10 });
+ }
+ }
+ return { hills: hills, gullies: gullies, stream: stream, bridges: bridges, trees: trees };
+ }
+ function onFieldBridge(x, z) {
+ const t = activeTerrain;
+ if (!t || !t.bridges) return false;
+ const bridges = t.bridges;
+ for (let i = 0; i < bridges.length; i++) {
+ const b = bridges[i];
+ if (Math.abs(x - b.x) <= b.hx && Math.abs(z - b.z) <= b.hz) return true;
+ }
+ return false;
+ }
+ function fieldHeightAt(x, z) {
+ const t = activeTerrain;
+ if (!t) return 0;
+ const f = currentField();
+ if (z > -24.2 || z < f.zSouth - 0.4 || x < -f.halfX - 0.4 || x > f.halfX + 0.4) return 0;
+ if (onFieldBridge(x, z)) return 0;
+ let h = 0;
+ const hills = t.hills || [];
+ for (let i = 0; i < hills.length; i++) {
+ const hill = hills[i];
+ const d = Math.hypot(x - hill.x, z - hill.z);
+ if (d >= hill.r) continue;
+ const u = 1 - d / hill.r;
+ h += hill.h * u * u;
+ }
+ const gullies = t.gullies || [];
+ for (let i = 0; i < gullies.length; i++) {
+ const g = gullies[i];
+ const d = Math.hypot(x - g.x, z - g.z);
+ if (d >= g.r) continue;
+ const u = 1 - d / g.r;
+ h += g.h * u * u;
+ }
+ const ax = Math.abs(x);
+ if (ax <= 4.2) h = 0;
+ else if (ax < 8.2) h *= (ax - 4.2) / 4;
+ if (z > -29) {
+ const u = (-25.2 - z) / (-25.2 + 29);
+ h *= Math.max(0, Math.min(1, u));
+ }
+ if (h > 2.75) h = 2.75;
+ if (h < -1.0) h = -1.0;
+ return h;
+ }
+ function fieldWaterAt(x, z) {
+ const t = activeTerrain;
+ if (!t || !t.stream) return false;
+ const f = currentField();
+ if (z > -24.2 || z < f.zSouth - 0.4 || Math.abs(x) > f.halfX + 0.8) return false;
+ const s = t.stream;
+ if (x < s.x0 || x > s.x1) return false;
+ if (Math.abs(z - s.z) > s.halfW) return false;
+ if (onFieldBridge(x, z)) return false;
+ return true;
+ }
+ function nearestFieldBridge(x, z) {
+ const t = activeTerrain;
+ if (!t || !t.bridges || !t.bridges.length) return null;
+ let best = t.bridges[0];
+ let bestD = Infinity;
+ for (let i = 0; i < t.bridges.length; i++) {
+ const b = t.bridges[i];
+ const d = Math.hypot(b.x - x, b.z - z);
+ if (d < bestD) { bestD = d; best = b; }
+ }
+ return best;
+ }
+ function avoidFieldWater(pos, tryX, tryZ, speed, dt) {
+ const f = currentField();
+ const limX = f.halfX + 1.2;
+ const limZ = Math.min(f.zSouth - 1.5, -60.5);
+ let x = pos.x;
+ if (!fieldWaterAt(tryX, pos.z) && tryX > -limX && tryX < limX) x = tryX;
+ else if (fieldWaterAt(tryX, pos.z)) {
+ const bridge = nearestFieldBridge(x, pos.z);
+ if (bridge) {
+ const dir = bridge.x >= x ? 1 : -1;
+ const sx = x + dir * Math.max(2.4, Math.abs(speed) || 4) * dt;
+ if (!fieldWaterAt(sx, pos.z) && sx > -limX && sx < limX) x = sx;
+ }
+ }
+ let z = pos.z;
+ if (!fieldWaterAt(x, tryZ) && tryZ > limZ && tryZ < 20.5) z = tryZ;
+ return { x: x, z: z };
+ }
+ function marchField(x, z, frames) {
+ const pos = { x: x, z: z, y: getGroundHeight(x, z) };
+ const stream = activeTerrain && activeTerrain.stream;
+ let wet = false;
+ const n = frames || 160;
+ for (let i = 0; i < n; i++) {
+ const dx = 0 - pos.x;
+ const dz = -26 - pos.z;
+ const dist = Math.hypot(dx, dz) || 1;
+ const spd = 4.6;
+ const step = avoidFieldWater(pos, pos.x + (dx / dist) * spd * 0.05, pos.z + (dz / dist) * spd * 0.05, spd, 0.05);
+ pos.x = step.x;
+ pos.z = step.z;
+ pos.y = getGroundHeight(pos.x, pos.z);
+ if (fieldWaterAt(pos.x, pos.z)) wet = true;
+ }
+ const crossed = stream ? (pos.z > stream.z + stream.halfW + 0.35) : (pos.z > z + 4);
+ return {
+ ok: crossed && !wet,
+ wet: wet,
+ crossed: crossed,
+ x: Math.round(pos.x * 100) / 100,
+ z: Math.round(pos.z * 100) / 100,
+ y: Math.round(pos.y * 100) / 100
+ };
+ }
+ function stampTreeShape(type, x, y, z, ox, oz, base) {
+ let rec = treeShapes[type];
+ if (!rec) rec = treeShapes[type] = { n: 0, minH: 99, maxH: -99, spread: 0, hang: 0 };
+ if (rec.n >= 500) return;
+ rec.n++;
+ const rel = y - base;
+ if (rel < rec.minH) rec.minH = rel;
+ if (rel > rec.maxH) rec.maxH = rel;
+ const horiz = Math.hypot(x - ox, z - oz);
+ if (horiz > rec.spread) rec.spread = horiz;
+ if (rel < 1.7 && horiz > 0.95) rec.hang++;
+ }
+ function terrainSignature(t) {
+ if (!t) return '';
+ const hills = (t.hills || []).map(h => h.x + ',' + h.z + ':' + h.h).join('|');
+ const gullies = (t.gullies || []).map(g => g.x + ',' + g.z + ':' + g.h).join('|');
+ const stream = t.stream ? (t.stream.z + ':' + t.stream.halfW) : '';
+ const bridges = (t.bridges || []).map(b => b.x + '@' + b.z).join('|');
+ const trees = (t.trees || []).map(tr => tr.type + '@' + tr.x + ',' + tr.z).join('|');
+ return [hills, gullies, stream, bridges, trees].join('#');
+ }
+ function terrainSummary(layout) {
+ const t = (layout && layout.terrain) || activeTerrain || { hills: [], gullies: [], stream: null, bridges: [], trees: [] };
+ const trees = (t.trees || []).map(tr => ({ type: tr.type, x: tr.x, z: tr.z, cluster: false }));
+ if (layout && !layout.fallback) {
+ const ids = layout.clusterIds || [];
+ for (let i = 0; i < ids.length; i++) {
+ const cluster = CLUSTERS[ids[i]];
+ if (!cluster) continue;
+ for (let k = 0; k < cluster.trees.length; k++) {
+ trees.push({ type: 'pine', x: cluster.trees[k].x, z: cluster.trees[k].z, cluster: true });
+ }
+ }
+ }
+ const types = [];
+ for (let i = 0; i < trees.length; i++) if (types.indexOf(trees[i].type) < 0) types.push(trees[i].type);
+ return { trees: trees, treeTypes: types, terrain: t };
+ }
+
  function mulberry32(seed) {
  let a = seed >>> 0;
  return function() {
@@ -1443,6 +1780,8 @@
  }
  }
  function fallbackLayout(code) {
+ const field = fieldForCode(code || 'FALLBACK');
+ activeField = field;
  return {
  code: code || '',
  graph: 0,
@@ -1455,6 +1794,8 @@
  stamps: [],
  clusterIds: [],
  blockers: [],
+ field: field,
+ terrain: buildTerrain(code || 'FALLBACK', []),
  rng: null
  };
  }
@@ -1511,6 +1852,8 @@
  return a.x0 < b.x1 + gap && a.x1 > b.x0 - gap && a.z0 < b.z1 + gap && a.z1 > b.z0 - gap;
  }
  function generateLayout(code, blockers) {
+ const field = fieldForCode(code);
+ activeField = field;
  const rng = mulberry32(hashSeed(code));
  const graph = rngInt(rng, 5);
  const placed = [];
@@ -1563,6 +1906,13 @@
  const c1 = rngInt(rng, CLUSTERS.length);
  let c2 = rngInt(rng, CLUSTERS.length - 1);
  if (c2 >= c1) c2++;
+ const clusterIds = [c1, c2];
+ const avoid = [];
+ for (let i = 0; i < clusterIds.length; i++) {
+ const cluster = CLUSTERS[clusterIds[i]];
+ if (!cluster) continue;
+ for (let t = 0; t < cluster.trees.length; t++) avoid.push(cluster.trees[t]);
+ }
  return {
  code: code,
  graph: graph,
@@ -1573,8 +1923,10 @@
  shrine: shrine,
  features: features,
  stamps: stamps,
- clusterIds: [c1, c2],
+ clusterIds: clusterIds,
  blockers: blockers || [],
+ field: field,
+ terrain: buildTerrain(code, avoid),
  rng: rng
  };
  }
@@ -1608,6 +1960,7 @@
  function cellBlocked(x, z, blocks) {
  if (x < -36.5 || x > 36.5 || z < -60 || z > 20.2) return true;
  if (isWaterOrBridgeDropZone(x, z)) return true;
+ if (fieldWaterAt(x, z)) return true;
  for (let i = 0; i < blocks.length; i++) {
  const c = blocks[i];
  if (x > c.minX - 0.35 && x < c.maxX + 0.35 && z > c.minZ - 0.35 && z < c.maxZ + 0.35) return true;
@@ -1701,7 +2054,7 @@
  if (h > groundGrid[i]) groundGrid[i] = h;
  }
  function clearStampColliders() {
- for (let i = colliders.length - 1; i >= 0; i--) if (colliders[i].stamp) colliders.splice(i, 1);
+ for (let i = colliders.length - 1; i >= 0; i--) if (colliders[i].stamp || colliders[i].fieldEdge) colliders.splice(i, 1);
  }
  function paintRaised(x, z, hx, hz, h, rng) {
  const x0 = x - hx, x1 = x + hx, z0 = z - hz, z1 = z + hz;
@@ -1737,17 +2090,179 @@
  }
  function paintEvergreen(x, z, layers, rng) {
  if (Math.abs(x) < 6) return;
- for (let y = 0; y <= 2.0; y += 0.5) addVox(x, y, z, 0x4e342e, 0.04, rng);
+ const base = z < -24 ? getGroundHeight(x, z) : 0;
+ const y0 = Math.round(base / VOX) * VOX;
+ for (let y = 0; y <= 2.0; y += 0.5) {
+ addVox(x, y0 + y, z, 0x4e342e, 0.04, rng);
+ stampTreeShape('pine', x, y0 + y, z, x, z, y0);
+ }
  for (let l = 0; l < layers; l++) {
- const ly = 2.0 + l * 0.75;
+ const ly = y0 + 2.0 + l * 0.75;
  const rad = Math.max(0.5, (1 - l / layers) * 2.0);
  for (let dx = -rad; dx <= rad + 0.01; dx += 0.7) {
  for (let dz = -rad; dz <= rad + 0.01; dz += 0.7) {
  if (Math.hypot(dx, dz) > rad) continue;
  const snowy = l >= layers - 2;
  addVox(x + dx, ly, z + dz, snowy ? 0xf8fafc : 0x1b4d3e, 0.04, rng);
+ stampTreeShape('pine', x + dx, ly, z + dz, x, z, y0);
  }
  }
+ }
+ }
+ function paintOak(x, z, rng) {
+ const base = getGroundHeight(x, z);
+ const y0 = Math.round(base / VOX) * VOX;
+ for (let y = 0; y <= 2.2; y += 0.5) {
+ addVox(x, y0 + y, z, 0x6b3a1f, 0.04, rng);
+ addVox(x + 0.45, y0 + y, z, 0x5c3317, 0.04, rng);
+ stampTreeShape('oak', x, y0 + y, z, x, z, y0);
+ }
+ addVox(x - 1.3, y0 + 2.5, z, 0x6b3a1f, 0.03, rng);
+ addVox(x + 1.7, y0 + 2.6, z, 0x5c3317, 0.03, rng);
+ addVox(x, y0 + 2.7, z - 1.3, 0x6b3a1f, 0.03, rng);
+ stampTreeShape('oak', x - 1.3, y0 + 2.5, z, x, z, y0);
+ const cy = y0 + 3.7;
+ for (let dx = -2.1; dx <= 2.11; dx += 0.75) {
+ for (let dy = -1.15; dy <= 1.61; dy += 0.75) {
+ for (let dz = -2.1; dz <= 2.11; dz += 0.75) {
+ if (Math.hypot(dx, dy * 1.15, dz) > 2.05) continue;
+ const leaf = Math.hypot(dx, dz) > 1.35 ? 0x65a30d : 0x3f6212;
+ addVox(x + dx, cy + dy, z + dz, leaf, 0.04, rng);
+ stampTreeShape('oak', x + dx, cy + dy, z + dz, x, z, y0);
+ }
+ }
+ }
+ }
+ function paintBirch(x, z, rng) {
+ const base = getGroundHeight(x, z);
+ const y0 = Math.round(base / VOX) * VOX;
+ for (let y = 0; y <= 4.5; y += 0.5) {
+ const band = Math.round(y * 2) % 4 === 0;
+ addVox(x, y0 + y, z, band ? 0x1c1917 : 0xf8fafc, 0.02, rng);
+ stampTreeShape('birch', x, y0 + y, z, x, z, y0);
+ }
+ const cy = y0 + 4.7;
+ for (let dx = -1.25; dx <= 1.26; dx += 0.62) {
+ for (let dz = -1.25; dz <= 1.26; dz += 0.62) {
+ if (Math.hypot(dx, dz) > 1.2) continue;
+ addVox(x + dx, cy, z + dz, 0xd9f99d, 0.03, rng);
+ stampTreeShape('birch', x + dx, cy, z + dz, x, z, y0);
+ if (Math.hypot(dx, dz) < 0.55) {
+ addVox(x + dx, cy + 0.55, z + dz, 0xbef264, 0.03, rng);
+ stampTreeShape('birch', x + dx, cy + 0.55, z + dz, x, z, y0);
+ }
+ }
+ }
+ }
+ function paintWillow(x, z, rng) {
+ const base = getGroundHeight(x, z);
+ const y0 = Math.round(base / VOX) * VOX;
+ for (let y = 0; y <= 2.3; y += 0.5) {
+ addVox(x, y0 + y, z, 0x4a3728, 0.04, rng);
+ stampTreeShape('willow', x, y0 + y, z, x, z, y0);
+ }
+ const cy = y0 + 2.7;
+ for (let dx = -1.35; dx <= 1.36; dx += 0.68) {
+ for (let dz = -1.35; dz <= 1.36; dz += 0.68) {
+ if (Math.hypot(dx, dz) > 1.4) continue;
+ addVox(x + dx, cy, z + dz, 0x166534, 0.04, rng);
+ stampTreeShape('willow', x + dx, cy, z + dz, x, z, y0);
+ }
+ }
+ for (let a = 0; a < 8; a++) {
+ const ang = a / 8 * Math.PI * 2;
+ const sx = Math.cos(ang) * 1.3;
+ const sz = Math.sin(ang) * 1.3;
+ for (let y = 0; y <= 2.15; y += 0.55) {
+ const hang = 1 - y / 2.6;
+ const px = x + sx * (0.65 + hang * 0.55);
+ const pz = z + sz * (0.65 + hang * 0.55);
+ const py = cy - y;
+ addVox(px, py, pz, y < 1.1 ? 0x22c55e : 0x15803d, 0.04, rng);
+ stampTreeShape('willow', px, py, pz, x, z, y0);
+ }
+ }
+ }
+ function paintFieldHedges(f, tint) {
+ const y0 = 0;
+ const y1 = 1.0;
+ const thick = 1.05;
+ const west = -f.halfX;
+ const east = f.halfX;
+ const south = f.zSouth;
+ const north = -25.2;
+ addBoxVoxels(west, y0, south, west + thick, y1, north, 0x3f6212, false, 0.04, tint);
+ addBoxVoxels(east - thick, y0, south, east, y1, north, 0x3f6212, false, 0.04, tint);
+ addBoxVoxels(west, y0, south, east, y1, south + thick, 0x3f6212, false, 0.04, tint);
+ colliders.push({ minX: west, maxX: west + thick, minZ: south, maxZ: north, fieldEdge: true });
+ colliders.push({ minX: east - thick, maxX: east, minZ: south, maxZ: north, fieldEdge: true });
+ colliders.push({ minX: west, maxX: east, minZ: south, maxZ: south + thick, fieldEdge: true });
+ const outerX = 62;
+ const outerZ = -112;
+ for (let x = -outerX; x <= outerX; x += 1) {
+ for (let z = -24; z >= outerZ; z -= 1) {
+ if (x >= west && x <= east && z <= -24 && z >= south) continue;
+ const moatX = (x < west && x >= west - 3) || (x > east && x <= east + 3);
+ const moatZ = z < south && z >= south - 3;
+ if ((moatX || moatZ) && z >= south - 3 && x >= west - 3 && x <= east + 3) {
+ addVox(x, -0.75, z, 0x1e3a5f, 0.03, tint);
+ continue;
+ }
+ if (Math.abs(x) <= 60 && z >= -110) addVox(x, -0.25, z, (tint() < 0.5) ? 0xeef6ff : 0xdbeafe, 0.03, tint);
+ }
+ }
+ }
+ function paintFieldTerrain(layout) {
+ const code = (layout && layout.code) ? layout.code : 'FALLBACK';
+ const tint = mulberry32(hashSeed(code + ':fieldtint'));
+ const f = currentField();
+ const xMax = f.halfX;
+ const zMin = f.zSouth;
+ paintFieldHedges(f, tint);
+ for (let x = Math.round(-xMax); x <= xMax; x += 1) {
+ for (let z = Math.round(zMin); z <= -25; z += 1) {
+ const water = fieldWaterAt(x, z);
+ const bridge = onFieldBridge(x, z);
+ if (water && !bridge) {
+ addVox(x, -1.25, z, 0x1e3a5f, 0.03, tint);
+ addVox(x, -0.75, z, 0x38bdf8, 0.04, tint);
+ if (x < xMax) addVox(x + 0.5, -0.75, z, 0x7dd3fc, 0.03, tint);
+ continue;
+ }
+ const walk = bridge ? 0 : fieldHeightAt(x, z);
+ const top = Math.round((walk - 0.25) / VOX) * VOX;
+ const yBottom = Math.min(-0.25, top);
+ const road = Math.abs(x) <= 3.6 && !bridge;
+ for (let y = yBottom; y <= top + 0.001; y += 0.5) {
+ let col;
+ if (bridge) col = ((Math.round(x) + Math.round(z)) % 2 === 0) ? 0x8f6440 : 0x6b4423;
+ else if (y < top - 0.01) col = walk < -0.25 ? 0x44403c : 0x3f6212;
+ else if (road) col = (tint() < 0.5) ? 0x8f7958 : 0x826d4e;
+ else if (walk < -0.35) col = 0x57534e;
+ else col = (tint() < 0.5) ? 0x4b8f3b : 0x569e43;
+ addVox(x, y, z, col, 0.04, tint);
+ if (x < xMax && z > zMin) addVox(x + 0.5, y, z + 0.5, col, 0.03, tint);
+ }
+ }
+ }
+ const bridges = (activeTerrain && activeTerrain.bridges) || [];
+ for (let i = 0; i < bridges.length; i++) {
+ const b = bridges[i];
+ for (let x = Math.round(b.x - b.hx); x <= b.x + b.hx; x += 1) {
+ addVox(x, 0.75, b.z - b.hz, 0x3f2e21, 0.03, tint);
+ addVox(x, 0.75, b.z + b.hz, 0x3f2e21, 0.03, tint);
+ }
+ }
+ }
+ function paintTerrainTrees(layout) {
+ const trees = (activeTerrain && activeTerrain.trees) || [];
+ const rng = mulberry32(hashSeed(((layout && layout.code) || 'FALLBACK') + ':trees'));
+ for (let i = 0; i < trees.length; i++) {
+ const tree = trees[i];
+ if (tree.type === 'oak') paintOak(tree.x, tree.z, rng);
+ else if (tree.type === 'birch') paintBirch(tree.x, tree.z, rng);
+ else if (tree.type === 'willow') paintWillow(tree.x, tree.z, rng);
+ else paintEvergreen(tree.x, tree.z, 5, rng);
  }
  }
  function rebuildWorldMesh() {
@@ -1767,8 +2282,8 @@
  }
  const geo = new THREE.BoxGeometry(VOX, VOX, VOX);
  const inst = new THREE.InstancedMesh(geo, worldMat, worldVoxels.length);
- inst.castShadow = true;
- inst.receiveShadow = true;
+ inst.castShadow = !headlessDriver;
+ inst.receiveShadow = !headlessDriver;
  inst.userData.worldVoxels = true;
  const dummy = new THREE.Object3D();
  for (let i = 0; i < worldVoxels.length; i++) {
@@ -1806,6 +2321,14 @@
  iceZones.length = 0;
  snowZones.length = 0;
  ensureGroundGrid();
+ activeField = layout.field || fieldForCode(layout.code || 'FALLBACK');
+ layout.field = activeField;
+ activeTerrain = layout.terrain || buildTerrain(layout.code || 'FALLBACK', []);
+ layout.terrain = activeTerrain;
+ activeField = layout.field || activeField;
+ treeShapes = {};
+ paintFieldTerrain(layout);
+ paintTerrainTrees(layout);
  paintWell(layout.well.x, layout.well.z, rng);
  paintShrine(layout.shrine.x, layout.shrine.z, rng);
  colliders.push({
@@ -1854,6 +2377,8 @@
  if (!cluster) continue;
  for (let t = 0; t < cluster.trees.length; t++) {
  const tree = cluster.trees[t];
+ const meadow = currentField();
+ if (Math.abs(tree.x) > meadow.halfX - 2.2 || tree.z < meadow.zSouth + 2.2 || tree.z > -27) continue;
  paintEvergreen(tree.x, tree.z, tree.h, rng);
  }
  }
@@ -1867,7 +2392,59 @@
  const stamps = (layout.stamps || []).map(s => s.type + '@' + s.x + ',' + s.z).join('|');
  const feats = (layout.features || []).map(f => f.kind + '@' + f.x + ',' + f.z + ':' + f.h).join('|');
  const clusters = (layout.clusterIds || []).join(',');
- return [layout.code, layout.graph, layout.fallback ? 1 : 0, layout.shop.x, layout.shop.z, layout.well.x, layout.well.z, layout.shrine.x, layout.shrine.z, feats, stamps, clusters].join(';');
+ const terrain = terrainSignature(layout.terrain);
+ const field = layout.field || currentField();
+ const fieldTag = (field.id || 'field') + ':' + field.halfX + 'x' + field.depth;
+ return [layout.code, layout.graph, layout.fallback ? 1 : 0, layout.shop.x, layout.shop.z, layout.well.x, layout.well.z, layout.shrine.x, layout.shrine.z, feats, stamps, clusters, terrain, fieldTag].join(';');
+ }
+ function terrainInfo() {
+ const c = courtyard || fallbackLayout('');
+ if (c.terrain) activeTerrain = c.terrain;
+ const summary = terrainSummary(c);
+ const t = summary.terrain || {};
+ const hill = (t.hills && t.hills[0]) || null;
+ const gully = (t.gullies && t.gullies[0]) || null;
+ const bridge = (t.bridges && t.bridges[0]) || null;
+ const stream = t.stream || null;
+ let bank = null;
+ if (bridge && stream) bank = { x: Math.round((bridge.x + bridge.hx + 1.8) * 10) / 10, z: stream.z };
+ const shapes = {};
+ const keys = Object.keys(treeShapes);
+ for (let i = 0; i < keys.length; i++) {
+ const s = treeShapes[keys[i]];
+ shapes[keys[i]] = {
+ n: s.n,
+ minH: Math.round(s.minH * 100) / 100,
+ maxH: Math.round(s.maxH * 100) / 100,
+ spread: Math.round(s.spread * 100) / 100,
+ hang: s.hang
+ };
+ }
+ return {
+ hills: t.hills || [],
+ gullies: t.gullies || [],
+ stream: stream,
+ bridges: t.bridges || [],
+ trees: summary.trees,
+ treeTypes: summary.treeTypes,
+ shapes: shapes,
+ heights: {
+ hill: hill ? getGroundHeight(hill.x, hill.z) : 0,
+ gully: gully ? getGroundHeight(gully.x, gully.z) : 0,
+ road: getGroundHeight(0, -32),
+ bridge: bridge ? getGroundHeight(bridge.x, bridge.z) : 0
+ },
+ water: {
+ bridge: !!(bridge && fieldWaterAt(bridge.x, bridge.z)),
+ bank: !!(bank && fieldWaterAt(bank.x, bank.z)),
+ bankAt: bank
+ },
+ reach: {
+ courtyard: pathsOk(c),
+ shop: { x: c.shop.x, z: c.shop.z }
+ },
+ signature: terrainSignature(t)
+ };
  }
  function courtyardInfo() {
  const c = courtyard || fallbackLayout('');
@@ -1900,13 +2477,19 @@
  stampColliders: stampCols,
  meshCount: meshes,
  ice: iceZones.map(z => ({ x: z.x, z: z.z, r: z.r })),
- snow: snowZones.map(z => ({ x: z.x, z: z.z, r: z.r }))
+ snow: snowZones.map(z => ({ x: z.x, z: z.z, r: z.r })),
+ field: fieldSummary(c.field || currentField())
  };
  }
  function commitCourtyard(layout, opts) {
  opts = opts || {};
  if (gameStateReady && state.inWave && !opts.force) return courtyard;
  let use = layout || fallbackLayout('');
+ activeField = use.field || fieldForCode(use.code || 'FALLBACK');
+ use.field = activeField;
+ if (!use.terrain) use.terrain = buildTerrain(use.code || 'FALLBACK', []);
+ activeTerrain = use.terrain;
+ activeField = use.field || activeField;
  if (!use.fallback && ((use.stamps || []).length < 12 || !pathsOk(use))) {
  const rng = use.rng;
  const code = use.code;
@@ -1914,6 +2497,8 @@
  use.rng = rng;
  use.fallback = true;
  use.label = GRAPH_LABELS[0];
+ activeTerrain = use.terrain;
+ activeField = use.field || activeField;
  }
  courtyard = use;
  if (baseVoxelCount > 0) paintCourtyard(use);
@@ -1930,9 +2515,10 @@
  }
 
  function buildWorld() {
- // 1. GREEN FIELD WITH WINTER SNOW PATCHES & DRIFTS (z: -24 to -74)
- for (let x = -42; x <= 42; x += 1.0) {
- for (let z = -24; z >= -74; z -= 1.0) {
+ // 1. Distant snowy skirt outside every meadow. The playable field is painted per seed.
+ for (let x = -68; x <= 68; x += 1.0) {
+ for (let z = -24; z >= -118; z -= 1.0) {
+ if (Math.abs(x) <= 60 && z >= -110) continue;
  const distRoad = Math.abs(x + Math.sin(z * 0.09) * 1.4);
  const snowWave = Math.sin(x * 0.14 + z * 0.11) + Math.cos(x * 0.23 - z * 0.17) * 0.7;
  const isSnowPatch = (z < -58) || (distRoad > 3.0 && snowWave > 0.32) || (Math.abs(x) > 18 && snowWave > -0.15);
@@ -2165,13 +2751,13 @@
 
  // 10. Wall of Snow-Capped Evergreens
  const treePositions = [];
- for (let x = -44; x <= 44; x += 4.2) {
- treePositions.push({ x: x + (Math.random() - 0.5) * 1.5, z: -64 - Math.random() * 4, h: 10 + Math.floor(Math.random() * 5) });
- treePositions.push({ x: x + 2.0 + (Math.random() - 0.5) * 1.5, z: -70 - Math.random() * 5, h: 12 + Math.floor(Math.random() * 6) });
+ for (let x = -66; x <= 66; x += 6) {
+ treePositions.push({ x: x + (Math.random() - 0.5) * 1.2, z: -112 - Math.random() * 2, h: 10 + Math.floor(Math.random() * 5) });
+ treePositions.push({ x: x + 2.0 + (Math.random() - 0.5) * 1.2, z: -116 - Math.random() * 2, h: 12 + Math.floor(Math.random() * 6) });
  }
- for (let z = -30; z >= -60; z -= 6.5) {
- treePositions.push({ x: -34 - Math.random() * 4, z, h: 9 + Math.floor(Math.random() * 4) });
- treePositions.push({ x: 34 + Math.random() * 4, z, h: 9 + Math.floor(Math.random() * 4) });
+ for (let z = -30; z >= -108; z -= 8) {
+ treePositions.push({ x: -64 - Math.random() * 2, z, h: 9 + Math.floor(Math.random() * 4) });
+ treePositions.push({ x: 64 + Math.random() * 2, z, h: 9 + Math.floor(Math.random() * 4) });
  }
  treePositions.forEach(tree => {
  for (let y = 0; y < 3.5; y += 0.5) addVox(tree.x, y, tree.z, 0x4e342e, 0.05);
@@ -2236,6 +2822,7 @@
  }
 
  buildWorld();
+ if (window.__bastionBoot) window.__bastionBoot.phase = 'world';
 
  // =========================================================================
  // HANGING BELL, SHRINE CRYSTAL & SNOWFALL
@@ -3186,6 +3773,17 @@
  eyeHeight: 1.72
  };
 
+ function outsideActor(x, z, extra) {
+ const f = currentField();
+ if (z <= -24.05) {
+ const inset = extra ? 0.7 : 0.55;
+ if (x < -f.halfX + inset || x > f.halfX - inset) return true;
+ if (z < f.zSouth + inset) return true;
+ return false;
+ }
+ if (extra) return x <= -37 || x >= 37 || z >= 20.5;
+ return x < -38 || x > 38 || z > 20.8;
+ }
  function getGroundHeight(x, z) {
  if (groundGrid && inCourtyardFloor(x, z)) {
  const ix = Math.round((x - GX0) / GS);
@@ -3196,6 +3794,8 @@
  if (z >= -12.0 && Math.abs(x) <= 3.75) return ((z - (-12.0)) / 10.0) * 3.0;
  if (z >= -24.0 && Math.abs(x) <= 3.75) return 0.0;
  if (z > -24.0 && z < -2.0) return 0.0;
+ const f = currentField();
+ if (z <= -24.0 && z >= f.zSouth - 0.4 && Math.abs(x) <= f.halfX + 0.4) return fieldHeightAt(x, z);
  return 0.0;
  }
 
@@ -3267,7 +3867,11 @@
 
  function warpPlayerIfFallen(posObj, velObj, label = 'P1', color = '#38bdf8') {
  const gH = getGroundHeight(posObj.x, posObj.z);
- if (posObj.y < gH - 0.35 || posObj.y < 1.2 || isWaterOrBridgeDropZone(posObj.x, posObj.z)) {
+ const water = isWaterOrBridgeDropZone(posObj.x, posObj.z) || fieldWaterAt(posObj.x, posObj.z);
+ const belowFeet = posObj.y < gH - 0.35;
+ const underWorld = posObj.y < -1.15;
+ const sunkOnHighGround = gH >= -0.05 && posObj.y < 1.2;
+ if (belowFeet || underWorld || water || sunkOnHighGround) {
  posObj.set(0, 4.72, 0.5);
  if (velObj) velObj.set(0, 0, 0);
  showBanner(`⚓ ${label} WARPED BACK TO SAFE RAMP (NO FALLING IN WATER)!`, color);
@@ -3278,7 +3882,8 @@
  }
 
  function isOutOfBoundsXZ(x, z) {
- if (!(x > -36.8 && x < 36.8 && z > -59.5 && z < 20.2)) return true;
+ const e = playableEnvelope();
+ if (!(x > e.minX && x < e.maxX && z > e.minZ && z < e.maxZ)) return true;
  if (isWaterOrBridgeDropZone(x, z)) return true;
  for (let i = 0; i < colliders.length; i++) {
  const c = colliders[i];
@@ -5503,7 +6108,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  mesh.position.copy(customPos);
  } else {
  const startY = base.flying ? (6.5 + Math.random() * 4.5) : 0;
- mesh.position.set((Math.random() - 0.5) * 48, startY, -64 - Math.random() * 6);
+ const meadow = currentField();
+ const span = Math.max(8, (meadow.halfX - 3) * 2);
+ mesh.position.set((Math.random() - 0.5) * span, startY, meadow.zSouth + 3 + Math.random() * 2);
  }
  scene.add(mesh);
  mesh.updateMatrixWorld(true);
@@ -5595,7 +6202,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  else if (state.wave === 10) unlockNote = ' • NEW: FLYING GARGOYLE!';
 
  const queue = [];
- const total = Math.max(6, Math.round((8 + state.wave * 4) * (0.75 + settings.difficulty * 0.25)));
+ const total = waveMonsterCount(state.wave);
  for (let i = 0; i < total; i++) {
  // Slightly weight standard enemies early, mix in newly unlocked types cleanly
  const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -6576,7 +7183,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  pullMonsterToward(m, ctx.pos, 6);
  m.rootTimer = Math.max(m.rootTimer || 0, 1.2);
  if (!(m.base && m.base.flying)) {
- m.mesh.position.y = Math.max(0, getGroundHeight(m.mesh.position.x, m.mesh.position.z));
+ m.mesh.position.y = getGroundHeight(m.mesh.position.x, m.mesh.position.z);
  }
  }
  damageMonster(m, 18, m.mesh.position.clone(), false, index);
@@ -6772,7 +7379,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const travel = Math.max(0, Math.min(maxDist, len - 0.9));
  m.mesh.position.x += (dx / len) * travel;
  m.mesh.position.z += (dz / len) * travel;
- if (!(m.base && m.base.flying)) m.mesh.position.y = Math.max(0, getGroundHeight(m.mesh.position.x, m.mesh.position.z));
+ if (!(m.base && m.base.flying)) m.mesh.position.y = getGroundHeight(m.mesh.position.x, m.mesh.position.z);
  }
  function dropRope(rope) {
  dropMesh(rope && rope.mesh);
@@ -8108,14 +8715,21 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const dx = x - pos.x;
  const dz = z - pos.z;
  const dist = Math.hypot(dx, dz) || 1;
+ const groundBoss = !(m.base && m.base.flying) && m.bossKind !== 'angel' && m.bossKind !== 'choir';
  if (scale > 0) {
  const step = Math.min(dist, speed * scale * dt);
- pos.x += (dx / dist) * step;
- pos.z += (dz / dist) * step;
+ const tryX = pos.x + (dx / dist) * step;
+ const tryZ = pos.z + (dz / dist) * step;
+ if (groundBoss) {
+ const moved = avoidFieldWater(pos, tryX, tryZ, speed, dt);
+ pos.x = moved.x;
+ pos.z = moved.z;
+ } else {
+ pos.x = tryX;
+ pos.z = tryZ;
  }
- if (!(m.base && m.base.flying) && m.bossKind !== 'angel' && m.bossKind !== 'choir') {
- pos.y = Math.max(0, getGroundHeight(pos.x, pos.z));
  }
+ if (groundBoss) pos.y = getGroundHeight(pos.x, pos.z);
  m.mesh.rotation.y = Math.atan2(dx, dz);
  return dist;
  }
@@ -8261,7 +8875,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (y >= 2.5 && y <= roof && d <= t.r + 0.25 && d >= t.r - 1.15) return true;
  if (y >= 8 && d < t.r - 0.35 && z > t.z - t.r) return true;
  }
- if (x < -36.8 || x > 36.8 || z < -59.5 || z > 20.2) return true;
+ const env = playableEnvelope();
+ if (x < env.minX || x > env.maxX || z < env.minZ || z > env.maxZ) return true;
  // y near 0 is the road. Only a real fall-through or a sky clip is out of bounds.
  if (y < -1.2 || y > 24) return true;
  return false;
@@ -8289,8 +8904,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  if (!hit) break;
  }
- px = Math.max(-34, Math.min(34, px));
- pz = Math.max(-58, Math.min(18.2, pz));
+ const env = playableEnvelope();
+ px = Math.max(env.minX + 2.8, Math.min(env.maxX - 2.8, px));
+ pz = Math.max(env.minZ + 1.5, Math.min(18.2, pz));
  if (towerBuried(px, 8, pz)) { px = 0; pz = -8; }
  return { x: px, y: 7.4, z: pz };
  }
@@ -8621,7 +9237,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return 'walk';
  }
  m.bossCd -= dt;
- if (m.bossCd <= 0 && pos.z > -62 && pos.z < 2) {
+ if (m.bossCd <= 0 && pos.z > currentField().zSouth + 1 && pos.z < 2) {
  const threat = pickThreat(pos);
  m.lastAimIndex = threat.index;
  m.storedAim = threat.pos.clone();
@@ -9668,17 +10284,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let animQueued = false;
  let livePaused = false;
  function queueLiveFrame() {
- // Yield through a timer before the next frame so a rendering frame cannot
- // lock the page. Debug steps call animate() directly and do not join this loop.
+ // Real play paces on animation frames. Headless Chrome can stop producing
+ // those frames after many browsers, which also stalls a rAF test poll even
+ // when the debug hook is already true. Tests step time themselves.
  if (forcedDt || animQueued || livePaused) return;
  animQueued = true;
- setTimeout(() => {
- requestAnimationFrame(() => {
+ const pump = () => {
  animQueued = false;
  animate();
  queueLiveFrame();
- });
- }, 0);
+ };
+ if (headlessDriver) setTimeout(pump, 16);
+ else setTimeout(() => { requestAnimationFrame(pump); }, 0);
  }
  function animate() {
  // Headless Chrome stops vsync, so a timer steps the same loop when frames stall.
@@ -9801,7 +10418,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateMenuGamepadNav(dt);
  updateP1Gamepad(dt);
  if (!state.running) {
- if (!debugSkipRender && !debugHoldRender) renderSplitScreens();
+ if (!headlessDriver && !debugSkipRender && !debugHoldRender) renderSplitScreens();
  return;
  }
  pollMineHotkeys();
@@ -9914,11 +10531,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const nextZ = player.pos.z + hv.z * dt;
 
  const blocked = (x, z) => {
- if (x < -38 || x > 38 || z < -61 || z > 20.8) return true;
+ if (outsideActor(x, z, false)) return true;
  return hitCollider(x, z);
  };
- if (!blocked(nextX, player.pos.z) && !isWaterOrBridgeDropZone(nextX, player.pos.z)) player.pos.x = nextX;
- if (!blocked(player.pos.x, nextZ) && !isWaterOrBridgeDropZone(player.pos.x, nextZ)) player.pos.z = nextZ;
+ if (!blocked(nextX, player.pos.z) && !isWaterOrBridgeDropZone(nextX, player.pos.z) && !fieldWaterAt(nextX, player.pos.z)) player.pos.x = nextX;
+ if (!blocked(player.pos.x, nextZ) && !isWaterOrBridgeDropZone(player.pos.x, nextZ) && !fieldWaterAt(player.pos.x, nextZ)) player.pos.z = nextZ;
  warpPlayerIfFallen(player.pos, player.vel, 'P1', PLAYER_HEX[0]);
 
  if (keys[settings.keybinds.jump] && player.onGround && !isViewportShopOpen(0)) {
@@ -10274,11 +10891,22 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const amp = pos.z < -23.5 ? 7.8 : 3.2;
  moveX += Math.cos(m.zigPhase) * amp * moveScale;
  }
- pos.x += moveX * dt;
+ const tryX = pos.x + moveX * dt;
+ const tryZ = pos.z + moveZ * dt;
+ const moved = avoidFieldWater(pos, tryX, tryZ, m.speed, dt);
+ pos.x = moved.x;
  if (pos.z >= -24.0) pos.x = Math.max(-3.4, Math.min(3.4, pos.x));
- pos.z += moveZ * dt;
+ if (!fieldWaterAt(pos.x, tryZ) && tryZ > currentField().zSouth - 1 && tryZ < 20.5) pos.z = tryZ;
+ if (!m.base.flying && !m.bossKind && !(m.base && m.base.isBoss) && pos.z < -24.2) {
+ const meadow = currentField();
+ const lim = meadow.halfX - 1.35;
+ if (pos.x < -lim) pos.x = -lim;
+ if (pos.x > lim) pos.x = lim;
+ const south = meadow.zSouth + 1.7;
+ if (pos.z < south) pos.z = south;
+ }
  const rootBob = Math.abs(Math.sin(m.walkPhase)) * 0.14 * m.base.scale;
- pos.y = Math.max(0, getGroundHeight(pos.x, pos.z)) + rootBob;
+ pos.y = getGroundHeight(pos.x, pos.z) + rootBob;
  m.mesh.rotation.y = Math.atan2(dx, dz);
  m.mesh.rotation.z = Math.sin(m.walkPhase) * 0.065; // grounded weight shift
  m.mesh.rotation.x = 0.07 + Math.abs(Math.cos(m.walkPhase)) * 0.06; // forward drive lean
@@ -10299,7 +10927,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  checkWiresCrossed(m, prevX, prevZ);
 
  // Boss Boulder & Fast Spear-Tree attacks!
- if (!m.staged && m.base.throwsBoulders && pos.z > -62 && pos.z < 2) {
+ if (!m.staged && m.base.throwsBoulders && pos.z > currentField().zSouth + 1 && pos.z < 2) {
  m.boulderCd -= dt * 1.5;
  if (m.boulderCd <= 0) {
  m.boulderCd = Math.max(1.25, 2.35 - settings.difficulty * 0.4);
@@ -10528,7 +11156,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateViewportShops(dt);
  updateCasings(dt);
  updateHUD();
- if (!debugSkipRender && !debugHoldRender) renderSplitScreens();
+ if (!headlessDriver && !debugSkipRender && !debugHoldRender) renderSplitScreens();
  }
 
  function updateDrops(dt) {
@@ -10805,6 +11433,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const splash = document.getElementById('splash-screen');
  const c = document.getElementById('splash-canvas');
  if (!splash || !c) return;
+ if (headlessDriver) { splash.style.display = 'none'; return; }
  const ctx = c.getContext('2d');
  const W = c.width, H = c.height;
 
@@ -12489,8 +13118,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const hv = horizontalVelocity(ep, mDir.x, mDir.z, spd, dt);
  const nx = ep.pos.x + hv.x * dt;
  const nz = ep.pos.z + hv.z * dt;
- if (nx > -37 && nx < 37 && !isWaterOrBridgeDropZone(nx, ep.pos.z) && !hitCollider(nx, ep.pos.z)) ep.pos.x = nx;
- if (nz > -60 && nz < 20.5 && !isWaterOrBridgeDropZone(ep.pos.x, nz) && !hitCollider(ep.pos.x, nz)) ep.pos.z = nz;
+ if (!outsideActor(nx, ep.pos.z, true) && !isWaterOrBridgeDropZone(nx, ep.pos.z) && !fieldWaterAt(nx, ep.pos.z) && !hitCollider(nx, ep.pos.z)) ep.pos.x = nx;
+ if (!outsideActor(ep.pos.x, nz, true) && !isWaterOrBridgeDropZone(ep.pos.x, nz) && !fieldWaterAt(ep.pos.x, nz) && !hitCollider(ep.pos.x, nz)) ep.pos.z = nz;
 
  if (wantJump && ep.onGround) { ep.vel.y = 7.4; ep.onGround = false; }
  ep.vel.y -= 20.5 * dt;
@@ -13118,6 +13747,27 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return { x: m.mesh.position.x, y: m.mesh.position.y, z: m.mesh.position.z, hp: m.hp };
  },
  courtyardInfo() { return courtyardInfo(); },
+ terrainInfo() { return terrainInfo(); },
+ fieldInfo() { return fieldSummary(currentField()); },
+ previewField(code) {
+ const norm = normalizeSeed(code);
+ const spec = fieldForCode(norm || 'FALLBACK');
+ const summary = fieldSummary(spec);
+ summary.code = norm || '';
+ summary.valid = !!norm;
+ return summary;
+ },
+ fieldShapeSeeds() { return findFieldShapeSeeds(); },
+ monsterBudget(wave) { return waveMonsterCount(wave || 1); },
+ strikeMonster(index, dmg) {
+ const m = monsters[index || 0];
+ if (!m || m.hp <= 0) return null;
+ const before = m.hp;
+ damageMonster(m, dmg == null ? 12 : dmg, m.mesh.position.clone(), false, 0);
+ return { hp: m.hp, before: before, alive: m.hp > 0 };
+ },
+ fieldWater(x, z) { return fieldWaterAt(x, z); },
+ marchField(x, z, frames) { return marchField(x, z, frames); },
  applySeed(code, force) {
  const norm = normalizeSeed(code);
  if (!norm) return courtyardInfo();
@@ -13852,10 +14502,21 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  };
 
+ if (headlessDriver) {
+ livePaused = true;
+ debugHoldRender = true;
+ debugSkipRender = true;
+ }
  resetGame();
  refreshSaveMenuUI();
  refreshGamepadStatusUI();
- queueLiveFrame();
+ if (!livePaused) queueLiveFrame();
+ if (window.__bastionBoot) {
+ window.__bastionBoot.phase = 'ready';
+ window.__bastionBoot.driver = !!headlessDriver;
+ window.__bastionBoot.webdriver = navigator.webdriver === true;
+ window.__bastionBoot.paused = !!livePaused;
+ }
 })();
 </script>
 </body>
