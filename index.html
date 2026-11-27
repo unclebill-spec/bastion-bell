@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bastion Bell v29 — Shells, Shared Guns, Viewport Armory, Gate Flyers</title>
+<title>Bastion Bell v30 — Ranged Shots, Frost Bolts, Ember Fireballs</title>
 <style>
  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
  body { overflow: hidden; background: #0d1520; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #fff; }
@@ -252,6 +252,8 @@
  }
  .shop-item-info strong { display: block; font-size: 13.5px; color: #f8fafc; }
  .shop-item-info span { font-size: 11.5px; color: #94a3b8; }
+ .shop-item-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+ .shop-gun-icon { width: 72px; height: 48px; flex: 0 0 auto; object-fit: contain; background: rgba(2, 6, 23, 0.55); border: 1px solid rgba(255,255,255,0.12); border-radius: 6px; }
  .shop-buy-btn {
  background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; border: none;
  padding: 7px 12px; border-radius: 8px; font-size: 12px; font-weight: 900; cursor: pointer; white-space: nowrap;
@@ -276,6 +278,31 @@
  .g-pill.active-frag { background: rgba(34,197,94,0.22); color: #86efac; border-color: #22c55e; }
  .g-pill.active-flame { background: rgba(249,115,22,0.25); color: #fdba74; border-color: #f97316; }
  .g-pill.active-thermite { background: rgba(239,68,68,0.25); color: #fca5a5; border-color: #ef4444; }
+ .mine-controls { display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin: 6px 0; flex-wrap: wrap; pointer-events: auto; }
+ .mine-drop-btn, .mine-select-btn {
+ pointer-events: auto; cursor: pointer; font-weight: 900; font-size: 12px; border-radius: 8px;
+ min-height: 44px; padding: 8px 10px; touch-action: manipulation;
+ }
+ .mine-drop-btn { background: #b45309; color: #fff7ed; border: 2px solid #fdba74; }
+ .mine-select-btn { background: rgba(15,23,42,0.92); color: #e2e8f0; border: 2px solid #94a3b8; }
+ .mine-select-btn.active { background: #7f1d1d; color: #fecaca; border-color: #ef4444; }
+ #mine-count { pointer-events: none; }
+ .vp-mine-controls {
+ position: absolute; left: 8px; bottom: 8px; display: flex; gap: 6px; align-items: center;
+ z-index: 8; pointer-events: auto; flex-wrap: wrap; max-width: calc(100% - 16px);
+ }
+ .vp-mine-btn, .vp-mine-select {
+ pointer-events: auto; cursor: pointer; font-weight: 900; font-size: 12px; border-radius: 8px;
+ min-height: 44px; padding: 8px 10px; touch-action: manipulation;
+ }
+ .vp-mine-btn { background: #b45309; color: #fff7ed; border: 2px solid #fdba74; }
+ .vp-mine-select { background: rgba(15,23,42,0.92); color: #e2e8f0; border: 2px solid #94a3b8; }
+ .vp-mine-select.active { background: #7f1d1d; color: #fecaca; border-color: #ef4444; }
+ .vp-mine-count {
+ pointer-events: none; font-size: 12px; font-weight: 900; color: #fecaca;
+ background: rgba(12,18,28,0.88); border: 1px solid rgba(251,146,60,0.45);
+ border-radius: 8px; padding: 8px 8px; min-height: 44px; display: flex; align-items: center;
+ }
 
  #mag-cap-info { font-size: 11px; color: #fbbf24; font-weight: 700; margin-bottom: 3px; }
  #weapon-cycle-info { font-size: 11px; color: #94a3b8; font-weight: 600; }
@@ -539,7 +566,9 @@
  <span class="key">SPACE</span> Jump &nbsp;|&nbsp;
  <span class="key">LMB</span> Shoot &nbsp;|&nbsp;
  <span class="key">RMB</span> Throw Grenade &nbsp;|&nbsp;
- <span class="key">G</span> Switch Grenade<br>
+ <span class="key">G</span> Switch Grenade &nbsp;|&nbsp;
+ <span class="key">V</span> / <span class="key">R3</span> Drop Mine &nbsp;|&nbsp;
+ <span class="key">M</span> / <span class="key">Back</span> Select Mines (fire drops)<br>
  <span class="key">1</span> / <span class="key">R</span> Reload &nbsp;|&nbsp;
  <span class="key">2</span> ADS / Scope Zoom &nbsp;|&nbsp;
  <span class="key">0</span> Deploy / Mount Dual .50 Cal &nbsp;|&nbsp;
@@ -774,6 +803,11 @@
  <div id="g-flame" class="g-pill">🔥 Flame: 1</div>
  <div id="g-thermite" class="g-pill">⚡ Thermite: 1</div>
  </div>
+ <div class="mine-controls">
+ <span id="mine-count" class="g-pill">💣 Mines 0/10</span>
+ <button type="button" id="mine-select-btn" class="mine-select-btn" aria-pressed="false" title="Select mines. Fire then drops a mine. Keyboard M, Xbox Back, Micro L2+Y.">SELECT MINES [M / Back]</button>
+ <button type="button" id="drop-mine-btn" class="mine-drop-btn" title="Drop a proximity mine. Keyboard V, controller R3, or this button.">DROP MINE [V / R3]</button>
+ </div>
  <div id="mag-cap-info">3 Mags Max (Next +1 at Lvl 6)</div>
  <div id="weapon-cycle-info">[1] Reload • [2] ADS • [0] .50 Cal • [G] Grenade</div>
  </div>
@@ -831,7 +865,9 @@
  ads: 'Digit2',
  grenadeCycle: 'KeyG',
  deploy50: 'Digit0',
- cycleWeapon: 'KeyQ'
+ cycleWeapon: 'KeyQ',
+ dropMine: 'KeyV',
+ selectMines: 'KeyM'
  };
 
  const BIND_LABELS = {
@@ -846,7 +882,9 @@
  ads: 'ADS / Scope Zoom',
  grenadeCycle: 'Switch Grenade',
  deploy50: 'Deploy Dual .50 Cal',
- cycleWeapon: 'Cycle Weapon'
+ cycleWeapon: 'Cycle Weapon',
+ dropMine: 'Drop Mine',
+ selectMines: 'Select Mines'
  };
 
  let savedBinds = null;
@@ -1210,6 +1248,7 @@
  renderer.shadowMap.enabled = true;
  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
  document.body.appendChild(renderer.domElement);
+ renderer.domElement.style.pointerEvents = 'none';
 
  scene.add(new THREE.HemisphereLight(0xdbeeff, 0x3b4d34, 0.72));
 
@@ -1228,6 +1267,8 @@
  const wellLight = new THREE.PointLight(0x38bdf8, 2.2, 16);
  wellLight.position.set(0, 5.2, 16);
  scene.add(wellLight);
+ let wellAnchor = null;
+ let funAnchor = null;
 
  const ammoLight = new THREE.PointLight(0xfbbf24, 2.0, 14);
  ammoLight.position.set(-7.0, 5.4, 9.5);
@@ -1749,6 +1790,8 @@
  wellLight.position.set(courtyard.well.x, 5.2, courtyard.well.z);
  ammoLight.position.set(courtyard.shop.x, 5.4, courtyard.shop.z);
  powerLight.position.set(courtyard.shrine.x, 5.4, courtyard.shrine.z);
+ if (wellAnchor) wellAnchor.position.set(courtyard.well.x, 0, courtyard.well.z);
+ if (funAnchor) funAnchor.position.set(courtyard.shrine.x, 0, courtyard.shrine.z);
  if (!stationMeshesReady) return;
  if (shopGroup) shopGroup.position.set(courtyard.shop.x - (-7), 0, courtyard.shop.z - 9.5);
  if (typeof shrineCrystal !== 'undefined' && shrineCrystal) {
@@ -2224,6 +2267,39 @@
  );
  shrineCrystal.position.set(11, 5.4, 12);
  scene.add(shrineCrystal);
+
+ function makeStationSign(word, color) {
+ const c = document.createElement('canvas');
+ c.width = 256; c.height = 96;
+ const ctx = c.getContext('2d');
+ ctx.fillStyle = '#1e293b';
+ ctx.fillRect(0, 0, 256, 96);
+ ctx.strokeStyle = color;
+ ctx.lineWidth = 8;
+ ctx.strokeRect(6, 6, 244, 84);
+ ctx.fillStyle = color;
+ ctx.font = '700 54px sans-serif';
+ ctx.textAlign = 'center';
+ ctx.textBaseline = 'middle';
+ ctx.fillText(word, 128, 50);
+ const tex = new THREE.CanvasTexture(c);
+ const mesh = new THREE.Mesh(
+ new THREE.BoxGeometry(1.8, 0.55, 0.08),
+ new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 })
+ );
+ mesh.position.set(0, 6.4, 0);
+ mesh.userData.stationSign = word;
+ return mesh;
+ }
+ wellAnchor = new THREE.Group();
+ wellAnchor.name = 'well-anchor';
+ wellAnchor.add(makeStationSign('WELL', '#7dd3fc'));
+ scene.add(wellAnchor);
+ funAnchor = new THREE.Group();
+ funAnchor.name = 'fun-shop-anchor';
+ funAnchor.add(makeStationSign('FUN', '#d8b4fe'));
+ scene.add(funAnchor);
+ syncStationProps();
 
  // =========================================================================
  // ENHANCED WINTER SNOW WEATHER & CHRISTMAS LIGHTS ON THE CASTLE BRIDGE
@@ -2831,6 +2907,11 @@
  // 3 Grenade Types!
  grenades: { frag: 2, flame: 1, thermite: 1 },
  selectedGrenade: 'frag', // 'frag' | 'flame' | 'thermite'
+ mines: 0,
+ minesBought: 0,
+ minesBoughtLevel: 1,
+ minesSelected: false,
+ mineFireLatch: false,
 
  scoped: false,
  ads: false,
@@ -3252,17 +3333,26 @@
  moveFwd: 0, moveStrafe: 0,
  prevShoot: false, prevAds: false, prevJump: false, prevReload: false,
  prevCycle: false, prevGrenade: false, prevGrenadeCycle: false,
- prevInteract: false, prevDash: false, prevTurret: false, prevPause: false
+ prevInteract: false, prevDash: false, prevTurret: false, prevPause: false,
+ prevDrop: false, prevMineSel: false
  };
 
- function getConnectedGamepads() {
- if (!navigator.getGamepads) return [];
+ let framePads = null;
+ let framePadPolls = 0;
+ function pollGamepadsOnce() {
+ framePadPolls++;
+ if (!navigator.getGamepads) { framePads = []; return framePads; }
  const raw = navigator.getGamepads();
  const list = [];
  for (let i = 0; i < raw.length; i++) {
  if (raw[i] && raw[i].connected) list.push(raw[i]);
  }
- return list;
+ framePads = list;
+ return framePads;
+ }
+ function getConnectedGamepads() {
+ if (framePads) return framePads;
+ return pollGamepadsOnce();
  }
 
  function detectControllerProfile(pad) {
@@ -3343,6 +3433,7 @@
  shoot: false, ads: false, jump: false, reload: false,
  cycleWeapon: false, throwGrenade: false, cycleGrenade: false,
  interact: false, dash: false, deploy50: false, pause: false,
+ dropMine: false, toggleMines: false,
  anyActivity: false
  };
 
@@ -3383,6 +3474,9 @@
  out.dash = (l2 && btn(1)) || btn(16); // L2 + Jump or Home/Star triggers Dash
  out.cycleGrenade = l2 && btn(8);
  out.deploy50 = l2 && btn(3);
+ out.dropMine = btn(11);
+ out.toggleMines = l2 && btn(3); // L2 + Y selects mines; fire then drops
+ if (out.toggleMines) out.cycleWeapon = false;
  } else {
  // Xbox Controller & 8BitDo Ultimate Bluetooth (Dual-Stick Standard Layout)
  const isSwitchLayout = (profile === '8bitdo_ultimate') && ((pad.id || '').toLowerCase().includes('pro controller') || (pad.id || '').toLowerCase().includes('2dc8'));
@@ -3409,6 +3503,8 @@
  out.cycleGrenade = out.cycleGrenade || btn(4); // LB / L
  out.dash = btn(10); // L3 (Left Stick Click)
  out.pause = btn(9); // Menu / +
+ out.dropMine = btn(11); // R3 drops a mine
+ out.toggleMines = btn(8); // Back / View selects mines
 
  if (isSwitchLayout) {
  // 8BitDo Ultimate in Bluetooth Switch S-Mode (bottom=B=0, right=A=1, left=Y=2, top=X=3)
@@ -3428,18 +3524,19 @@
  out.anyActivity = Math.abs(out.moveFwd) > 0.1 || Math.abs(out.moveStrafe) > 0.1 ||
  Math.abs(out.turnYaw) > 0.1 || Math.abs(out.turnPitch) > 0.1 ||
  out.shoot || out.ads || out.jump || out.reload || out.cycleWeapon ||
- out.throwGrenade || out.cycleGrenade || out.interact || out.dash || out.deploy50 || out.pause;
+ out.throwGrenade || out.cycleGrenade || out.interact || out.dash || out.deploy50 || out.pause ||
+ out.dropMine || out.toggleMines;
  return out;
  }
 
- function computeControllerAimAssist(originPos, curYaw, curPitch, dt, isAds, isShooting, profile) {
+ function computeControllerAimAssist(originPos, curYaw, curPitch, dt, isAds, isShooting, profile, stickYaw, stickPitch) {
  const strength = settings.aimAssist;
- if (strength <= 0 || monsters.length === 0) return { dYaw: 0, dPitch: 0, friction: 1.0 };
+ if (strength <= 0 || monsters.length === 0) return { dYaw: 0, dPitch: 0, friction: 1.0, broke: false };
 
  const isMicro = (profile === '8bitdo_micro');
- const maxRange = 68;
- const coneYaw = (isMicro ? 0.24 : (isAds ? 0.20 : 0.16)) * (0.75 + strength * 0.25);
- const conePitch = (isMicro ? 0.22 : (isAds ? 0.17 : 0.14)) * (0.75 + strength * 0.25);
+ const maxRange = 62;
+ const coneYaw = (isMicro ? 0.16 : (isAds ? 0.12 : 0.10)) * (0.75 + strength * 0.25);
+ const conePitch = (isMicro ? 0.14 : (isAds ? 0.10 : 0.09)) * (0.75 + strength * 0.25);
 
  let bestScore = Infinity;
  let bestYawDiff = 0;
@@ -3474,25 +3571,31 @@
  }
  }
 
- if (bestScore === Infinity) return { dYaw: 0, dPitch: 0, friction: 1.0 };
+ if (bestScore === Infinity) return { dYaw: 0, dPitch: 0, friction: 1.0, broke: false };
 
- // Aim slowdown (friction) when crosshair is on/near a target so sticks don't overshoot
- const nearFactor = Math.max(0, 1 - Math.hypot(bestYawDiff, bestPitchDiff) / coneYaw);
- const friction = 1.0 - nearFactor * Math.min(0.55, 0.36 * strength);
+ const sy = stickYaw || 0;
+ const sp = stickPitch || 0;
+ const oppose = (sy * bestYawDiff < 0 && Math.abs(sy) > 0.35) || (sp * bestPitchDiff < 0 && Math.abs(sp) > 0.35);
+ if (oppose) return { dYaw: 0, dPitch: 0, friction: 1.0, broke: true };
 
- // Rotational magnetism pulls smoothly toward the target (stronger when ADS or firing)
- const pullRate = (isShooting ? 9.5 : (isAds ? 7.5 : 3.2)) * strength * (isMicro ? 1.25 : 1.0);
+ // Weaker slowdown than the old 0.55 cap so the stick can leave a target.
+ const nearFactor = Math.max(0, 1 - Math.hypot(bestYawDiff, bestPitchDiff) / Math.max(0.001, coneYaw));
+ const friction = 1.0 - nearFactor * Math.min(0.28, 0.16 * strength);
+
+ const pullRate = (isShooting ? 4.1 : (isAds ? 3.2 : 1.55)) * strength * (isMicro ? 1.15 : 1.0);
  const alpha = Math.min(1, dt * pullRate);
  return {
  dYaw: bestYawDiff * alpha,
  dPitch: bestPitchDiff * alpha,
- friction
+ friction,
+ broke: false
  };
  }
 
 let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOverlayKey = '';
  let menuPadPrevDUp = false, menuPadPrevDDown = false, menuPadPrevDLeft = false, menuPadPrevDRight = false;
  let menuPadPrevConfirm = false, menuPadPrevBack = false;
+ let menuPadPrevLb = false, menuPadPrevRb = false;
 
  function splashIsVisible() {
  const splash = document.getElementById('splash-screen');
@@ -3687,8 +3790,61 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  el.click();
  }
 
+ function menuTabButtons(root) {
+ if (!root) return [];
+ return Array.from(root.querySelectorAll('.shop-tab')).filter(el => {
+ const r = el.getBoundingClientRect();
+ return r.width >= 2 && r.height >= 2;
+ });
+ }
+ function switchMenuTab(root, dir) {
+ const tabs = menuTabButtons(root);
+ if (tabs.length < 2) return false;
+ let idx = tabs.findIndex(t => t.classList.contains('active'));
+ if (idx < 0) idx = 0;
+ const next = tabs[(idx + (dir < 0 ? tabs.length - 1 : 1)) % tabs.length];
+ if (next) next.click();
+ return true;
+ }
+ function activeMenuRoot() {
+ if (state.shopOpen) return document.getElementById('shop-screen');
+ for (let i = 0; i < 4; i++) {
+ if (splitShops[i] && splitShops[i].open && splitShops[i].root) return splitShops[i].root;
+ }
+ return topMenuOverlay();
+ }
+ function moveMenuFocus(dir) {
+ const root = activeMenuRoot();
+ for (let i = 0; i < 4; i++) {
+ const session = splitShops[i];
+ if (!session || !session.open || session.root !== root) continue;
+ const list = shopFocusables(session);
+ const cur = (session.focusEl && list.indexOf(session.focusEl) >= 0) ? session.focusEl : list[0];
+ if (!cur) return null;
+ const next = spatialNeighbor(list, cur, dir) || cur;
+ focusShopControl(session, next);
+ return next;
+ }
+ const focusables = getVisibleMenuFocusableButtons();
+ if (!focusables.length) return null;
+ let cur = (menuPadFocusEl && focusables.indexOf(menuPadFocusEl) >= 0) ? menuPadFocusEl : focusables[0];
+ if (isAdjustableControl(cur) && (dir === 'left' || dir === 'right')) {
+ adjustControl(cur, dir === 'left' ? -1 : 1);
+ paintMenuFocus(cur);
+ return cur;
+ }
+ const next = spatialNeighbor(focusables, cur, dir);
+ if (next) {
+ menuPadFocusEl = next;
+ menuPadFocusIdx = Math.max(0, focusables.indexOf(next));
+ paintMenuFocus(next);
+ return next;
+ }
+ paintMenuFocus(cur);
+ return cur;
+ }
  function readMenuPadState() {
- let dUp = false, dDown = false, dLeft = false, dRight = false, confirm = false, back = false, anyBtn = false;
+ let dUp = false, dDown = false, dLeft = false, dRight = false, confirm = false, back = false, anyBtn = false, lb = false, rb = false;
  getConnectedGamepads().forEach(pad => {
  const b = pad.buttons || [], ax = pad.axes || [];
  const btn = idx => !!(b[idx] && (b[idx].pressed || b[idx].value > 0.35));
@@ -3698,9 +3854,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (btn(15) || ax[0] > 0.55) dRight = true;
  if (btn(0) || btn(9)) confirm = true;
  if (btn(1) || btn(8)) back = true;
+ if (btn(4)) lb = true;
+ if (btn(5)) rb = true;
  for (let bi = 0; bi < b.length; bi++) if (b[bi] && b[bi].pressed) anyBtn = true;
  });
- return { dUp, dDown, dLeft, dRight, confirm, back, anyBtn };
+ return { dUp, dDown, dLeft, dRight, confirm, back, anyBtn, lb, rb };
  }
 
  function rememberMenuPad(s) {
@@ -3710,6 +3868,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  menuPadPrevDRight = s.dRight;
  menuPadPrevConfirm = s.confirm;
  menuPadPrevBack = s.back;
+ menuPadPrevLb = !!s.lb;
+ menuPadPrevRb = !!s.rb;
  }
 
  function latchMenuConfirmEdges() {
@@ -3719,6 +3879,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  menuPadPrevDDown = true;
  menuPadPrevDLeft = true;
  menuPadPrevDRight = true;
+ menuPadPrevLb = true;
+ menuPadPrevRb = true;
  p1PadState.prevInteract = true;
  p1PadState.prevPause = true;
  extraPlayers.forEach(ep => { ep.prevShopBtn = true; });
@@ -3780,10 +3942,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const edgeRight = s.dRight && !menuPadPrevDRight;
  const edgeConfirm = s.confirm && !menuPadPrevConfirm;
  const edgeBack = s.back && !menuPadPrevBack;
+ const edgeLb = s.lb && !menuPadPrevLb;
+ const edgeRb = s.rb && !menuPadPrevRb;
  if (menuPadCooldown <= 0) {
  const cur = menuPadFocusEl;
  if (edgeBack) {
  goMenuBack();
+ menuPadCooldown = 0.22;
+ } else if ((edgeLb || edgeRb) && switchMenuTab(root, edgeLb ? -1 : 1)) {
  menuPadCooldown = 0.22;
  } else if ((edgeLeft || edgeRight) && isAdjustableControl(cur)) {
  adjustControl(cur, edgeLeft ? -1 : 1);
@@ -3857,6 +4023,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p1PadState.prevInteract = inp.interact;
  p1PadState.prevDash = inp.dash;
  p1PadState.prevTurret = inp.deploy50;
+ p1PadState.prevDrop = inp.dropMine;
+ p1PadState.prevMineSel = inp.toggleMines;
  return;
  }
 
@@ -3873,6 +4041,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p1PadState.prevInteract = inp.interact;
  p1PadState.prevDash = inp.dash;
  p1PadState.prevTurret = inp.deploy50;
+ p1PadState.prevDrop = inp.dropMine;
+ p1PadState.prevMineSel = inp.toggleMines;
  return;
  }
 
@@ -3880,12 +4050,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p1PadState.moveStrafe = inp.moveStrafe;
 
  // Unified Controller Aim Assist (Xbox, 8BitDo Ultimate BT & 8BitDo Micro BT)
- const assist = computeControllerAimAssist(player.pos, player.yaw, player.pitch, dt, state.ads || state.scoped, inp.shoot, inp.profile);
+ const assist = computeControllerAimAssist(player.pos, player.yaw, player.pitch, dt, state.ads || state.scoped, inp.shoot, inp.profile, inp.turnYaw, inp.turnPitch);
  const scopeScale = state.scoped ? 0.35 : (state.ads ? 0.65 : 1.0);
  const lookMult = settings.padSensitivity * scopeScale * assist.friction;
  player.yaw += inp.turnYaw * lookMult * dt + assist.dYaw;
  player.pitch = Math.max(-1.42, Math.min(1.42, player.pitch + inp.turnPitch * lookMult * dt + assist.dPitch));
 
+ if (!inp.shoot) state.mineFireLatch = false;
  // Shoot (auto-fire while held, or edge-triggered semi-auto)
  if (inp.shoot) {
  if (!p1PadState.prevShoot || state.mountedTurret || curWep().def.auto) tryShoot();
@@ -3908,6 +4079,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  if (inp.throwGrenade && !p1PadState.prevGrenade) throwGrenade();
  if (inp.cycleGrenade && !p1PadState.prevGrenadeCycle) cycleGrenadeType();
+ if (inp.dropMine && !p1PadState.prevDrop && playerCanUseMines(0)) dropMine(0);
+ if (inp.toggleMines && !p1PadState.prevMineSel && playerCanUseMines(0)) toggleMinesSelected(0);
  if (inp.dash && !p1PadState.prevDash) triggerDash();
  if (inp.deploy50 && !p1PadState.prevTurret) handleDual50Key();
  if (inp.interact && !p1PadState.prevInteract) {
@@ -3925,6 +4098,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p1PadState.prevInteract = inp.interact;
  p1PadState.prevDash = inp.dash;
  p1PadState.prevTurret = inp.deploy50;
+ p1PadState.prevDrop = inp.dropMine;
+ p1PadState.prevMineSel = inp.toggleMines;
  }
 
  let pointerLocked = false;
@@ -3944,7 +4119,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  renderKeybindsUI();
  return;
  }
+ const menuArrow = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
  if (state.shopOpen) {
+ if (menuArrow[e.code]) {
+ e.preventDefault();
+ if (!e.repeat) moveMenuFocus(menuArrow[e.code]);
+ return;
+ }
  if (e.code === 'KeyE' || e.code === 'Escape') {
  e.preventDefault();
  closeShop();
@@ -3952,6 +4133,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return;
  }
  if (keyboardViewportShopEvent(e)) return;
+ if (menuArrow[e.code] && topMenuOverlay()) {
+ e.preventDefault();
+ if (!e.repeat) moveMenuFocus(menuArrow[e.code]);
+ return;
+ }
  keys[e.code] = true;
  if (activeInputMode !== 'kbm') { activeInputMode = 'kbm'; }
  if (!state.running) return;
@@ -4002,12 +4188,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return;
  }
  if (e.button === 0) {
+ const mineHit = e.target && e.target.closest && e.target.closest('#drop-mine-btn, #mine-select-btn, .vp-mine-btn, .vp-mine-select, .mine-controls, .vp-mine-controls');
+ if (mineHit) return;
  if (!pointerLocked) { if (renderer.domElement.requestPointerLock) { try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} } return; }
  mouseDown = true;
  tryShoot();
  }
  });
- document.addEventListener('mouseup', e => { if (e.button === 0) mouseDown = false; });
+ document.addEventListener('mouseup', e => { if (e.button === 0) { mouseDown = false; state.mineFireLatch = false; } });
 
  document.addEventListener('wheel', e => {
  if (!state.running || !pointerLocked) return;
@@ -4033,6 +4221,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const projectiles = [];
  const fireZones = []; // { pos, life, tick, radius, group }
  const stuckThermites = []; // { mesh, targetMonster, pos, life, tick }
+ const placedMines = [];
+ const mineBlasts = [];
+ let mineSeq = 1;
+ const MINE_PRICE = 30;
+ const MINE_CAP = 10;
+ const MINE_ARM_SEC = 0.8;
+ const MINE_TRIGGER = 1.2;
+ const MINE_BLAST_RADIUS = 4.6;
+ const MINE_BLAST_DMG = 240;
+ const MINE_DROP_CODES = ['KeyV', 'Numpad1', 'KeyU', 'KeyO'];
+ const MINE_SELECT_CODES = ['KeyM', 'Numpad2', 'KeyI', 'KeyP'];
+ const mineKeyPrev = [{ d: false, s: false }, { d: false, s: false }, { d: false, s: false }, { d: false, s: false }];
  const particles = [];
  const partGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
  const particleMatCache = new Map();
@@ -4213,6 +4413,340 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateSplitHUD();
  }
 
+ function mineBag(index) {
+ const i = index | 0;
+ if (i <= 0) return state;
+ for (let k = 0; k < extraPlayers.length; k++) {
+ if (extraPlayers[k] && extraPlayers[k].index === i) return extraPlayers[k];
+ }
+ return null;
+ }
+ function mineBoughtCount(b) {
+ if (!b) return 0;
+ if ((b.minesBoughtLevel || 1) !== state.level) return 0;
+ return b.minesBought || 0;
+ }
+ function mineRoom(b) {
+ if (!b) return false;
+ if ((b.mines || 0) >= MINE_CAP) return false;
+ if (mineBoughtCount(b) >= MINE_CAP) return false;
+ return true;
+ }
+ function giveMineStock(b) {
+ if ((b.minesBoughtLevel || 0) !== state.level) {
+ b.minesBought = 0;
+ b.minesBoughtLevel = state.level;
+ }
+ b.mines = (b.mines || 0) + 1;
+ b.minesBought = (b.minesBought || 0) + 1;
+ }
+ function mineStatus(index) {
+ const b = mineBag(index);
+ if (!b) return null;
+ return {
+ held: b.mines || 0,
+ bought: mineBoughtCount(b),
+ cap: MINE_CAP,
+ price: MINE_PRICE,
+ selected: !!b.minesSelected,
+ level: state.level,
+ armDelay: MINE_ARM_SEC
+ };
+ }
+ function minesSelectedFor(index) {
+ const b = mineBag(index);
+ return !!(b && b.minesSelected);
+ }
+ function playerCanUseMines(index) {
+ if (!state.running || state.gameOver) return false;
+ if (index <= 0 && state.shopOpen) return false;
+ if (typeof isViewportShopOpen === 'function' && isViewportShopOpen(index)) return false;
+ return true;
+ }
+ function mineDropLabel(index) {
+ const fixed = ['V', 'Num1', 'U', 'O'];
+ let key = fixed[index] || 'V';
+ if (index <= 0) {
+ const code = (settings.keybinds && settings.keybinds.dropMine) || 'KeyV';
+ key = String(code).replace('Key', '').replace('Digit', '').replace('Numpad', 'Num');
+ }
+ return 'DROP MINE [' + key + ' / R3]';
+ }
+ function mineSelectLabel(index, selected) {
+ const fixed = ['M', 'Num2', 'I', 'P'];
+ let key = fixed[index] || 'M';
+ if (index <= 0) {
+ const code = (settings.keybinds && settings.keybinds.selectMines) || 'KeyM';
+ key = String(code).replace('Key', '').replace('Digit', '').replace('Numpad', 'Num');
+ }
+ const pad = index <= 0 ? ' / Back' : '';
+ return (selected ? 'MINES SELECTED' : 'SELECT MINES') + ' [' + key + pad + ']';
+ }
+ function buyMines(index, count) {
+ const b = mineBag(index);
+ if (!b) return { ok: false, reason: 'no-player', held: 0, bought: 0, cap: MINE_CAP, price: MINE_PRICE, got: 0 };
+ const n = Math.max(1, Math.floor(Number(count) || 1));
+ let got = 0;
+ let reason = '';
+ for (let i = 0; i < n; i++) {
+ if ((b.mines || 0) >= MINE_CAP) { reason = 'held'; break; }
+ if (mineBoughtCount(b) >= MINE_CAP) { reason = 'level'; break; }
+ if (state.silver < MINE_PRICE) { reason = 'silver'; break; }
+ state.silver -= MINE_PRICE;
+ giveMineStock(b);
+ got++;
+ }
+ updateHUD();
+ updateSplitHUD();
+ const status = mineStatus(index);
+ status.ok = got > 0;
+ status.got = got;
+ status.reason = got > 0 ? '' : (reason || 'cap');
+ return status;
+ }
+ function grantMines(index, n) {
+ const b = mineBag(index);
+ if (!b) return null;
+ b.mines = Math.max(0, Math.min(MINE_CAP, Math.floor(Number(n) || 0)));
+ updateHUD();
+ updateSplitHUD();
+ return mineStatus(index);
+ }
+ function toggleMinesSelected(index, force) {
+ const b = mineBag(index);
+ if (!b) return false;
+ const next = (typeof force === 'boolean') ? force : !b.minesSelected;
+ b.minesSelected = next;
+ b.mineFireLatch = false;
+ if (index <= 0) state.mineFireLatch = false;
+ const who = (index > 0 && b.label) ? (b.label + ' ') : '';
+ showBanner(next ? (who + 'MINES SELECTED — FIRE DROPS A MINE') : (who + 'MINES HOLSTERED'), next ? '#fdba74' : '#94a3b8');
+ updateHUD();
+ updateSplitHUD();
+ return next;
+ }
+ function spawnPlacedMine(x, y, z, owner) {
+ const g = new THREE.Group();
+ const body = new THREE.Mesh(
+ new THREE.BoxGeometry(0.86, 0.22, 0.86),
+ new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.4, metalness: 0.6 })
+ );
+ body.position.y = 0.11;
+ const band = new THREE.Mesh(
+ new THREE.BoxGeometry(0.94, 0.08, 0.94),
+ new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+ );
+ band.position.y = 0.24;
+ const light = new THREE.Mesh(
+ new THREE.BoxGeometry(0.2, 0.2, 0.2),
+ new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
+ );
+ light.position.y = 0.4;
+ const label = createFloatingLabelSprite('MINE', '#7f1d1d', '#fee2e2');
+ label.position.y = 0.92;
+ g.add(body, band, light, label);
+ g.position.set(x, y, z);
+ g.userData.mine = true;
+ scene.add(g);
+ const mine = {
+ id: mineSeq++,
+ mesh: g,
+ band: band,
+ light: light,
+ x: x,
+ y: y,
+ z: z,
+ owner: owner,
+ armed: false,
+ arm: MINE_ARM_SEC,
+ spent: false
+ };
+ g.userData.mineId = mine.id;
+ placedMines.push(mine);
+ return mine;
+ }
+ function mineSpan(mesh) {
+ if (!mesh) return 0;
+ const box = new THREE.Box3().setFromObject(mesh);
+ const size = new THREE.Vector3();
+ box.getSize(size);
+ return Math.max(size.x, size.y, size.z);
+ }
+ function listMines() {
+ return placedMines.map(m => ({
+ id: m.id,
+ x: m.x,
+ y: m.y,
+ z: m.z,
+ armed: !!m.armed,
+ arm: m.arm,
+ owner: m.owner,
+ visible: !!(m.mesh && m.mesh.visible && m.mesh.parent === scene),
+ span: mineSpan(m.mesh)
+ }));
+ }
+ function dropMine(index, x, z) {
+ const b = mineBag(index);
+ if (!b) return { ok: false, reason: 'no-player' };
+ if ((b.mines || 0) <= 0) {
+ const who = (index > 0 && b.label) ? (b.label + ' ') : '';
+ showBanner(who + 'NO MINES — BUY THEM AT THE ARMORY', '#f87171');
+ playTone(150, 110, 0.08, 0.12, 'square');
+ updateHUD();
+ updateSplitHUD();
+ return { ok: false, reason: 'empty', held: 0 };
+ }
+ let px = player.pos.x;
+ let pz = player.pos.z;
+ let yaw = player.yaw || 0;
+ if (index > 0) {
+ px = b.pos.x;
+ pz = b.pos.z;
+ yaw = b.yaw || 0;
+ }
+ let dx = px - Math.sin(yaw) * 1.35;
+ let dz = pz - Math.cos(yaw) * 1.35;
+ if (typeof x === 'number' && Number.isFinite(x) && typeof z === 'number' && Number.isFinite(z)) {
+ dx = x;
+ dz = z;
+ }
+ if (isOutOfBoundsXZ(dx, dz) || hitCollider(dx, dz)) {
+ dx = px;
+ dz = pz;
+ }
+ const gy = getGroundHeight(dx, dz);
+ b.mines = (b.mines || 0) - 1;
+ const mine = spawnPlacedMine(dx, gy, dz, index <= 0 ? 0 : index);
+ playTone(220, 140, 0.08, 0.12, 'square');
+ updateHUD();
+ updateSplitHUD();
+ return { ok: true, id: mine.id, x: mine.x, y: mine.y, z: mine.z, armed: false, owner: mine.owner, held: b.mines };
+ }
+ function spawnMineBlast(x, y, z) {
+ const g = new THREE.Group();
+ const mat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.92 });
+ for (let i = 0; i < 12; i++) {
+ const a = (i / 12) * Math.PI * 2;
+ const block = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), mat);
+ block.position.set(Math.cos(a) * 0.55, 0.4, Math.sin(a) * 0.55);
+ g.add(block);
+ }
+ g.position.set(x, y, z);
+ g.userData.mineBlast = true;
+ scene.add(g);
+ mineBlasts.push({ mesh: g, life: 0.6, x: x, y: y, z: z });
+ }
+ function clearPlacedMines() {
+ for (let i = 0; i < placedMines.length; i++) dropMesh(placedMines[i].mesh);
+ placedMines.length = 0;
+ for (let i = 0; i < mineBlasts.length; i++) dropMesh(mineBlasts[i].mesh);
+ mineBlasts.length = 0;
+ }
+ function enemyOnMine(mine) {
+ for (let j = 0; j < monsters.length; j++) {
+ const m = monsters[j];
+ if (!m || m.hp <= 0 || !m.mesh) continue;
+ const horiz = Math.hypot(m.mesh.position.x - mine.x, m.mesh.position.z - mine.z);
+ const scale = (m.base && m.base.scale) || 1;
+ const reach = MINE_TRIGGER + Math.min(0.85, Math.max(0, scale - 1) * 0.35);
+ if (horiz > reach) continue;
+ const flying = !!(m.base && m.base.flying);
+ if (flying && (m.mesh.position.y - mine.y) > 2.2) continue;
+ return true;
+ }
+ return false;
+ }
+ function detonateMine(index) {
+ const mine = placedMines[index];
+ if (!mine || mine.spent) return;
+ mine.spent = true;
+ const pos = new THREE.Vector3(mine.x, mine.y + 0.35, mine.z);
+ dropMesh(mine.mesh);
+ placedMines.splice(index, 1);
+ spawnMineBlast(mine.x, mine.y, mine.z);
+ triggerExplosion(pos, MINE_BLAST_RADIUS, MINE_BLAST_DMG);
+ }
+ function updateMines(dt) {
+ for (let i = placedMines.length - 1; i >= 0; i--) {
+ const mine = placedMines[i];
+ if (!mine.armed) {
+ mine.arm -= dt;
+ if (mine.light) mine.light.visible = (Math.floor(Math.abs(mine.arm) * 12) % 2) === 0;
+ if (mine.arm <= 0) {
+ mine.armed = true;
+ mine.arm = 0;
+ if (mine.light) {
+ mine.light.visible = true;
+ mine.light.material.color.setHex(0xef4444);
+ }
+ if (mine.band && mine.band.material) mine.band.material.color.setHex(0xef4444);
+ }
+ }
+ if (mine.armed && enemyOnMine(mine)) detonateMine(i);
+ }
+ for (let i = mineBlasts.length - 1; i >= 0; i--) {
+ const b = mineBlasts[i];
+ b.life -= dt;
+ const grow = 1 + (0.6 - Math.max(0, b.life)) * 7;
+ if (b.mesh) b.mesh.scale.setScalar(Math.max(0.2, grow));
+ if (b.mesh) {
+ b.mesh.traverse(ch => {
+ if (ch.material && ch.material.opacity != null) ch.material.opacity = Math.max(0, b.life / 0.6);
+ });
+ }
+ if (b.life <= 0) {
+ dropMesh(b.mesh);
+ mineBlasts.splice(i, 1);
+ }
+ }
+ }
+ function listMineBlasts() {
+ return mineBlasts.map(b => ({
+ x: b.x, y: b.y, z: b.z, life: b.life,
+ visible: !!(b.mesh && b.mesh.visible && b.mesh.parent === scene)
+ }));
+ }
+ function pollMineHotkeys() {
+ if (!state.running || state.gameOver) return;
+ const count = Math.max(1, Math.min(4, numPlayers || 1));
+ for (let i = 0; i < count; i++) {
+ if (!playerCanUseMines(i)) {
+ mineKeyPrev[i].d = false;
+ mineKeyPrev[i].s = false;
+ continue;
+ }
+ const dropCode = i === 0 ? ((settings.keybinds && settings.keybinds.dropMine) || MINE_DROP_CODES[0]) : MINE_DROP_CODES[i];
+ const selCode = i === 0 ? ((settings.keybinds && settings.keybinds.selectMines) || MINE_SELECT_CODES[0]) : MINE_SELECT_CODES[i];
+ const down = !!keys[dropCode];
+ const sel = !!keys[selCode];
+ if (down && !mineKeyPrev[i].d) dropMine(i);
+ if (sel && !mineKeyPrev[i].s) toggleMinesSelected(i);
+ mineKeyPrev[i].d = down;
+ mineKeyPrev[i].s = sel;
+ }
+ }
+ function bindMineButtons() {
+ const dropBtn = document.getElementById('drop-mine-btn');
+ const selBtn = document.getElementById('mine-select-btn');
+ if (dropBtn && !dropBtn.dataset.bound) {
+ dropBtn.dataset.bound = '1';
+ dropBtn.addEventListener('click', (e) => {
+ e.preventDefault();
+ e.stopPropagation();
+ if (playerCanUseMines(0)) dropMine(0);
+ });
+ }
+ if (selBtn && !selBtn.dataset.bound) {
+ selBtn.dataset.bound = '1';
+ selBtn.addEventListener('click', (e) => {
+ e.preventDefault();
+ e.stopPropagation();
+ if (playerCanUseMines(0)) toggleMinesSelected(0);
+ });
+ }
+ }
+ bindMineButtons();
+
  function fireExplosiveArrow(dmg, cam, origin) {
  const g = new THREE.Group();
  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.8), new THREE.MeshLambertMaterial({ color: 0x78350f }));
@@ -4225,6 +4759,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(useCam.quaternion).normalize();
  g.position.copy(fromPos).addScaledVector(dir, 1.0);
  g.lookAt(g.position.clone().add(dir));
+ g.userData.shotKind = 'arrow';
  scene.add(g);
 
  projectiles.push({ mesh: g, vel: dir.multiplyScalar(48), type: 'arrow', fuse: 3.0, radius: 5.8, dmg });
@@ -4510,6 +5045,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  spawnTracer(startPt, endPt, isExp ? 0xef4444 : (isTracer ? 0x22d3ee : 0xfbbf24));
+ spawnTravelRound(startPt, endPt, isExp ? 0xef4444 : (isTracer ? 0x22d3ee : 0xfbbf24), 'bullet');
 
  if (t.ammo <= 0) {
  spawnVoxelBurst(t.pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xf59e0b, 18, 6.0);
@@ -4549,11 +5085,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  g.add(body, nose, flame);
  g.position.copy(fromPos).addScaledVector(dir, 1.1);
  g.lookAt(g.position.clone().add(dir));
+ g.userData.shotKind = 'rocket';
  scene.add(g);
  projectiles.push({ mesh: g, vel: dir.multiplyScalar(42), type: 'rocket', fuse: 4.0, radius: 8.5, dmg });
  } else if (pType === 'gl_grenade') {
  const shell = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.32), new THREE.MeshStandardMaterial({ color: 0xd97706, emissive: 0x7c2d12, emissiveIntensity: 0.4 }));
  g.add(shell);
+ g.userData.shotKind = 'grenade';
  g.position.copy(fromPos).addScaledVector(dir, 1.0);
  scene.add(g);
  const vel = dir.multiplyScalar(28).add(new THREE.Vector3(0, 4.5, 0));
@@ -4563,6 +5101,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const fins = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.12), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
  fins.position.z = 0.26;
  g.add(shell, fins);
+ g.userData.shotKind = 'mortar';
  g.position.copy(fromPos).addScaledVector(dir, 1.1);
  scene.add(g);
  // High ballistic artillery arc!
@@ -5604,6 +6143,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  const castleRopes = [];
  const castleCensers = [];
+ const emberBurns = [];
  const castleWires = [];
  const castleStorms = [];
  const castleFx = [];
@@ -5847,6 +6387,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  spawnTracer(startPt, endPt, 0xfef08a);
  if (w && w.def && w.def.tool === 'flint') spawnSlug(startPt, endPt, 0xe5e7eb);
+ spawnTravelRound(startPt, endPt, (w && w.def && w.def.tool === 'flint') ? 0xe5e7eb : 0xfef08a, 'bullet');
  return pierced > 0;
  }
  function fireNoMag(index, w) {
@@ -5871,67 +6412,299 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (def.tool === 'storm') { paintStorm(index); return true; }
  return false;
  }
- function swingFrost(index) {
+ function buildBoltMesh(kind) {
+ const g = new THREE.Group();
+ g.userData.shotKind = kind;
+ if (kind === 'frost') {
+ const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.84), new THREE.MeshBasicMaterial({ color: 0xe0f2fe }));
+ const tip = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.24), new THREE.MeshBasicMaterial({ color: 0x93c5fd }));
+ tip.position.z = -0.5;
+ g.add(body, tip);
+ } else if (kind === 'fireball') {
+ const ball = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 6), new THREE.MeshBasicMaterial({ color: 0xf97316 }));
+ const glow = new THREE.Mesh(new THREE.SphereGeometry(0.46, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.55 }));
+ g.add(ball, glow);
+ } else if (kind === 'bash') {
+ const plate = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.72, 0.12), new THREE.MeshBasicMaterial({ color: 0xe2e8f0 }));
+ const rim = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.12, 0.16), new THREE.MeshBasicMaterial({ color: 0x93c5fd }));
+ g.add(plate, rim);
+ } else if (kind === 'ram') {
+ const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.7), new THREE.MeshBasicMaterial({ color: 0xfbbf24 }));
+ const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.8), new THREE.MeshBasicMaterial({ color: 0xd6d3d1 }));
+ shaft.position.z = 0.62;
+ g.add(head, shaft);
+ } else if (kind === 'storm') {
+ const orb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
+ const core = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.9), new THREE.MeshBasicMaterial({ color: 0xfef9c3 }));
+ g.add(orb, core);
+ } else {
+ const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.78), new THREE.MeshBasicMaterial({ color: 0xe7e5e4 }));
+ const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.24), new THREE.MeshBasicMaterial({ color: 0xf8fafc }));
+ head.position.z = -0.48;
+ g.add(shaft, head);
+ }
+ return g;
+ }
+ function launchBolt(index, spec) {
  const ctx = shotContext(index);
- if (!ctx) return;
- const reach = ctx.ads ? 1.6 : 2.4;
- const fx = -Math.sin(ctx.yaw);
- const fz = -Math.cos(ctx.yaw);
- const arc = new THREE.Group();
- const slab = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.46, reach), new THREE.MeshBasicMaterial({ color: 0xbfdbfe, transparent: true, opacity: 0.9 }));
- const core = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.16, reach * 0.92), new THREE.MeshBasicMaterial({ color: 0xf0f9ff }));
- arc.add(slab, core);
- arc.position.set(ctx.pos.x + fx * reach * 0.45, ctx.pos.y - 0.5, ctx.pos.z + fz * reach * 0.45);
- arc.rotation.y = Math.atan2(fx, fz);
- pushFx(arc, 'arc', 0.55);
- playTone(320, 180, 0.08, 0.1, 'triangle');
- const list = monsters.slice();
- for (let i = 0; i < list.length; i++) {
- const m = list[i];
- if (m.hp <= 0) continue;
- const dx = m.mesh.position.x - ctx.pos.x;
- const dz = m.mesh.position.z - ctx.pos.z;
- const dist = Math.hypot(dx, dz);
- if (dist > reach || dist < 0.001) continue;
- const dot = (dx / dist) * fx + (dz / dist) * fz;
- if (dot < 0.45) continue;
- let dmg = 55;
- if ((m.slowTimer || 0) > 0 && m.frostBranded) dmg += 40;
- damageMonster(m, dmg, m.mesh.position.clone(), false, index);
- if (m.hp > 0) {
- m.slowTimer = Math.max(m.slowTimer || 0, 2);
- m.slowMult = 0.55;
+ if (!ctx) return null;
+ const aim = aimEndPoint(ctx, 0.9);
+ const mesh = buildBoltMesh(spec.kind);
+ const origin = aim.origin.clone().addScaledVector(aim.dir, 0.75);
+ mesh.position.copy(origin);
+ mesh.lookAt(origin.clone().add(aim.dir));
+ scene.add(mesh);
+ const speed = spec.speed || 200;
+ projectiles.push({
+ type: 'bolt',
+ kind: spec.kind,
+ effect: spec.effect || spec.kind,
+ mesh: mesh,
+ vel: aim.dir.clone().multiplyScalar(speed),
+ fuse: spec.fuse || 1.7,
+ owner: index,
+ dmg: spec.dmg || 0,
+ baseDmg: spec.baseDmg || spec.dmg || 0,
+ hitRadius: spec.hitRadius || 1.5,
+ spent: false
+ });
+ return mesh;
+ }
+ function spawnTravelRound(start, end, color, kind) {
+ if (!start || !end) return;
+ const dir = new THREE.Vector3().subVectors(end, start);
+ const dist = dir.length();
+ if (dist < 0.25) return;
+ dir.normalize();
+ const mesh = new THREE.Group();
+ const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.64), new THREE.MeshBasicMaterial({ color: color || 0xfef08a }));
+ mesh.add(shaft);
+ mesh.userData.shotKind = kind || 'bullet';
+ mesh.position.copy(start);
+ mesh.lookAt(start.clone().add(dir));
+ scene.add(mesh);
+ const speed = 200;
+ projectiles.push({
+ type: 'round',
+ kind: kind || 'bullet',
+ mesh: mesh,
+ vel: dir.multiplyScalar(speed),
+ fuse: Math.min(1.5, dist / speed + 0.12),
+ spent: false
+ });
+ }
+ function sweepBoltMonster(prev, next, radius) {
+ const dist = prev.distanceTo(next);
+ const steps = Math.max(1, Math.ceil(dist / 0.55));
+ let best = null;
+ let bestT = 99;
+ for (let i = 0; i < monsters.length; i++) {
+ const m = monsters[i];
+ if (!m || m.hp <= 0 || !m.mesh) continue;
+ const scale = (m.base && m.base.scale) || 1;
+ const cy = m.debugTarget ? m.mesh.position.y : (m.mesh.position.y + 1.05 * scale);
+ const cx = m.mesh.position.x;
+ const cz = m.mesh.position.z;
+ const reach = m.debugTarget ? Math.max(radius, 1.7) : Math.max(radius, 1.15 * scale);
+ for (let s = 1; s <= steps; s++) {
+ const t = s / steps;
+ const x = prev.x + (next.x - prev.x) * t;
+ const y = prev.y + (next.y - prev.y) * t;
+ const z = prev.z + (next.z - prev.z) * t;
+ const d = Math.sqrt((cx - x) * (cx - x) + (cy - y) * (cy - y) + (cz - z) * (cz - z));
+ if (d <= reach && t < bestT) {
+ bestT = t;
+ best = { monster: m, point: new THREE.Vector3(x, y, z) };
+ break;
+ }
+ }
+ }
+ return best;
+ }
+ function sweepBoltGround(prev, next) {
+ const steps = 8;
+ for (let s = 1; s <= steps; s++) {
+ const t = s / steps;
+ const x = prev.x + (next.x - prev.x) * t;
+ const y = prev.y + (next.y - prev.y) * t;
+ const z = prev.z + (next.z - prev.z) * t;
+ const gy = getGroundHeight(x, z);
+ if (y <= gy + 0.16) return new THREE.Vector3(x, gy + 0.14, z);
+ }
+ return null;
+ }
+ function freezeMonster(m) {
+ if (!m || m.hp <= 0) return;
+ m.rootTimer = Math.max(m.rootTimer || 0, 1.25);
+ m.freezeTimer = Math.max(m.freezeTimer || 0, 1.25);
+ m.slowTimer = Math.max(m.slowTimer || 0, 2.2);
+ m.slowMult = Math.min(m.slowMult == null ? 0.55 : m.slowMult, 0.55);
  m.frostBranded = true;
  }
+ function spawnEmberBurn(x, z, owner) {
+ while (emberBurns.length >= 4) {
+ const old = emberBurns.shift();
+ dropMesh(old.mesh);
  }
+ const y = getGroundHeight(x, z);
+ const g = new THREE.Group();
+ const ring = new THREE.Mesh(new THREE.RingGeometry(1.05, 1.7, 24), new THREE.MeshBasicMaterial({ color: 0xf97316, side: THREE.DoubleSide, transparent: true, opacity: 0.82 }));
+ ring.rotation.x = -Math.PI / 2;
+ ring.position.y = 0.08;
+ const flame = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.55, 0.34), new THREE.MeshBasicMaterial({ color: 0xfde68a, transparent: true, opacity: 0.9 }));
+ flame.position.y = 0.4;
+ g.add(ring, flame);
+ g.position.set(x, y, z);
+ g.userData.shotKind = 'burn';
+ scene.add(g);
+ emberBurns.push({ x: x, z: z, y: y, life: 6.5, tick: 0, radius: 2.8, owner: owner || 0, mesh: g });
  }
- function bashKite(index) {
+ function applyHarpoonImpact(index, m) {
  const ctx = shotContext(index);
- if (!ctx) return;
- const fx = -Math.sin(ctx.yaw);
- const fz = -Math.cos(ctx.yaw);
- const bash = new THREE.Group();
- const plate = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.78, 0.12), new THREE.MeshBasicMaterial({ color: 0xe2e8f0 }));
- const swipe = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.16, 0.72), new THREE.MeshBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.85 }));
- plate.position.set(ctx.pos.x + fx * 1.05, ctx.pos.y - 0.42, ctx.pos.z + fz * 1.05);
- swipe.position.copy(plate.position);
- plate.rotation.y = Math.atan2(fx, fz);
- swipe.rotation.y = plate.rotation.y;
- bash.add(plate, swipe);
- pushFx(bash, 'bash', 0.42);
- playTone(180, 90, 0.06, 0.1, 'square');
+ if (!ctx || !m || m.hp <= 0) return;
+ const start = ctx.pos.clone();
+ start.y -= 0.15;
+ addRope(start, m.mesh.position.clone().add(new THREE.Vector3(0, 1.1, 0)));
+ const boss = !!(m.base && m.base.isBoss);
+ const flying = !!(m.base && m.base.flying);
+ if (boss) {
+ m.slowMult = Math.min(m.slowMult || 1, 0.8);
+ m.slowTimer = Math.max(m.slowTimer || 0, 1);
+ } else if (flying) {
+ yankOwnerCourtyard(index);
+ } else {
+ pullMonsterToward(m, ctx.pos, 6);
+ m.rootTimer = Math.max(m.rootTimer || 0, 1.2);
+ if (!(m.base && m.base.flying)) {
+ m.mesh.position.y = Math.max(0, getGroundHeight(m.mesh.position.x, m.mesh.position.z));
+ }
+ }
+ damageMonster(m, 18, m.mesh.position.clone(), false, index);
+ }
+ function applyRamImpact(index, m, point, dmg) {
+ if (!m || m.hp <= 0) return;
+ const hasPlate = (m.shieldHp || 0) > 0 || (m.plateHp || 0) > 0;
+ const ramFlags = { chip: true };
+ if (hasPlate) {
+ const shred = Math.round(dmg * 3);
+ if ((m.shieldHp || 0) > 0) m.shieldHp = (m.shieldHp || 0) - shred;
+ if ((m.plateHp || 0) > 0) m.plateHp = m.plateHp - shred;
+ notePlayerDamage(index, shred);
+ damageMonster(m, Math.round(dmg * 0.2), point, false, index, ramFlags);
+ spawnVoxelBurst(point, 0xf59e0b, 10, 6);
+ } else {
+ damageMonster(m, Math.round(dmg * 0.2), point, false, index, ramFlags);
+ }
+ }
+ function detonateStormAt(x, z, owner) {
  const list = monsters.slice();
  for (let i = 0; i < list.length; i++) {
  const m = list[i];
  if (m.hp <= 0) continue;
- const dx = m.mesh.position.x - ctx.pos.x;
- const dz = m.mesh.position.z - ctx.pos.z;
- const dist = Math.hypot(dx, dz);
- if (dist > 1.8 || dist < 0.001) continue;
- const dot = (dx / dist) * fx + (dz / dist) * fz;
- if (dot < 0.35) continue;
- damageMonster(m, 40, m.mesh.position.clone(), false, index);
+ if (Math.hypot(m.mesh.position.x - x, m.mesh.position.z - z) <= 3.2) {
+ damageMonster(m, 180, m.mesh.position.clone(), false, owner);
  }
+ }
+ if (!settings.infiniteMode) {
+ if (Math.hypot(player.pos.x - x, player.pos.z - z) <= 3.2) {
+ state.hp -= 180;
+ if (state.hp <= 0) { state.hp = 0; updateHUD(); triggerGameOver('Struck by a storm rod!'); }
+ }
+ for (let i = 0; i < extraPlayers.length; i++) {
+ const ep = extraPlayers[i];
+ if (ep.hp <= 0) continue;
+ if (Math.hypot(ep.pos.x - x, ep.pos.z - z) <= 3.2) {
+ ep.hp -= 180;
+ if (ep.hp <= 0) { ep.hp = 0; updateHUD(); triggerGameOver(ep.label + ' was struck by a storm rod!'); }
+ }
+ }
+ }
+ const top = new THREE.Vector3(x, 28, z);
+ const bot = new THREE.Vector3(x, getGroundHeight(x, z), z);
+ const boltDir = new THREE.Vector3().subVectors(bot, top);
+ const boltLen = Math.max(1, boltDir.length());
+ boltDir.normalize();
+ const bolt = new THREE.Group();
+ const column = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, boltLen), new THREE.MeshBasicMaterial({ color: 0xfef9c3 }));
+ column.position.copy(top).add(bot).multiplyScalar(0.5);
+ column.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), boltDir);
+ bolt.add(column);
+ bolt.userData.shotKind = 'bolt';
+ pushFx(bolt, 'bolt', 0.45);
+ playThunderCrack();
+ rodGap = 0.35;
+ updateHUD();
+ updateSplitHUD();
+ }
+ function resolveTravelHit(p, monster, point) {
+ const owner = p.owner || 0;
+ if (p.effect === 'frost') {
+ if (!monster) return;
+ let dmg = p.dmg || 55;
+ if ((monster.slowTimer || 0) > 0 && monster.frostBranded) dmg += 40;
+ damageMonster(monster, dmg, point, false, owner);
+ if (monster.hp > 0) freezeMonster(monster);
+ cappedVoxelBurst(point, 0xbfdbfe, 6, 3.2);
+ } else if (p.effect === 'ember') {
+ if (monster && monster.hp > 0) damageMonster(monster, p.dmg || 12, point, false, owner);
+ const x = monster && monster.mesh ? monster.mesh.position.x : point.x;
+ const z = monster && monster.mesh ? monster.mesh.position.z : point.z;
+ spawnEmberBurn(x, z, owner);
+ } else if (p.effect === 'bash') {
+ if (monster) damageMonster(monster, p.dmg || 40, point, false, owner);
+ } else if (p.effect === 'ram') {
+ if (monster) applyRamImpact(owner, monster, point, p.dmg || 80);
+ } else if (p.effect === 'harpoon') {
+ if (monster) applyHarpoonImpact(owner, monster);
+ } else if (p.effect === 'chain') {
+ if (!monster) return;
+ const baseDmg = p.baseDmg || p.dmg || 90;
+ damageMonster(monster, baseDmg, point, false, owner);
+ if (monster.hp > 0) queueChain(monster, baseDmg, 1, [monster], owner);
+ } else if (p.effect === 'storm') {
+ const x = monster && monster.mesh ? monster.mesh.position.x : point.x;
+ const z = monster && monster.mesh ? monster.mesh.position.z : point.z;
+ detonateStormAt(x, z, owner);
+ }
+ }
+ function advanceTravelShot(p, dt) {
+ if (!p || !p.mesh) return true;
+ if (p.spent) {
+ p.fuse -= dt;
+ return p.fuse <= 0;
+ }
+ const prev = p.mesh.position.clone();
+ p.mesh.position.addScaledVector(p.vel, dt);
+ p.fuse -= dt;
+ if (p.vel && p.vel.lengthSq() > 1e-4) p.mesh.lookAt(p.mesh.position.clone().add(p.vel));
+ if (p.type === 'round') return p.fuse <= 0;
+ const next = p.mesh.position.clone();
+ const hit = sweepBoltMonster(prev, next, p.hitRadius || 1.5);
+ if (hit) {
+ p.mesh.position.copy(hit.point);
+ resolveTravelHit(p, hit.monster, hit.point);
+ p.spent = true;
+ p.vel.set(0, 0, 0);
+ p.fuse = 0.5;
+ return false;
+ }
+ const ground = sweepBoltGround(prev, next);
+ if (!ground && p.fuse > 0) return false;
+ if (ground) p.mesh.position.copy(ground);
+ const point = p.mesh.position.clone();
+ if (p.effect === 'ember' || p.effect === 'storm') resolveTravelHit(p, null, point);
+ p.spent = true;
+ p.vel.set(0, 0, 0);
+ p.fuse = 0.35;
+ return false;
+ }
+ function swingFrost(index) {
+ launchBolt(index, { kind: 'frost', effect: 'frost', speed: 200, dmg: 55, hitRadius: 1.55 });
+ playTone(320, 180, 0.08, 0.1, 'triangle');
+ }
+ function bashKite(index) {
+ launchBolt(index, { kind: 'bash', effect: 'bash', speed: 200, dmg: 40, hitRadius: 1.55 });
+ playTone(180, 90, 0.06, 0.1, 'square');
  }
  function kiteRaised(index) {
  let def = null;
@@ -6120,49 +6893,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  castleRopes.push({ mesh: mesh, life: 2.4 });
  }
  function fireHarpoon(index) {
- const ctx = shotContext(index);
- if (!ctx) return;
- const hit = firstMonsterHit(index);
- const start = ctx.pos.clone();
- start.y -= 0.15;
- if (!hit) {
- const ray = aimEndPoint(ctx, 22);
- pushFx(makeChainArrow(ray.origin, ray.end, 0xcbd5e1), 'arrow', 0.7);
- return;
- }
- addRope(start, hit.m.mesh.position.clone().add(new THREE.Vector3(0, 1.1, 0)));
- const boss = !!(hit.m.base && hit.m.base.isBoss);
- const flying = !!(hit.m.base && hit.m.base.flying);
- if (boss) {
- hit.m.slowMult = Math.min(hit.m.slowMult || 1, 0.8);
- hit.m.slowTimer = Math.max(hit.m.slowTimer || 0, 1);
- } else if (flying) {
- yankOwnerCourtyard(index);
- } else {
- pullMonsterToward(hit.m, ctx.pos, 6);
- hit.m.rootTimer = Math.max(hit.m.rootTimer || 0, 1.2);
- if (!(hit.m.base && hit.m.base.flying)) {
- hit.m.mesh.position.y = Math.max(0, getGroundHeight(hit.m.mesh.position.x, hit.m.mesh.position.z));
- }
- }
+ launchBolt(index, { kind: 'arrow', effect: 'harpoon', speed: 200, dmg: 18, hitRadius: 1.55 });
  }
  function placeCenser(index) {
- const pt = aimGroundPoint(index);
- while (castleCensers.length >= 4) {
- const old = castleCensers.shift();
- dropMesh(old.mesh);
- }
- const g = new THREE.Group();
- const pot = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.28, 0.35), new THREE.MeshLambertMaterial({ color: 0xb45309 }));
- pot.position.y = 0.2;
- const ring = new THREE.Mesh(new THREE.RingGeometry(3.2, 3.5, 24), new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide, transparent: true, opacity: 0.45 }));
- ring.rotation.x = -Math.PI / 2;
- ring.position.y = 0.06;
- g.add(pot, ring);
- g.position.set(pt.x, pt.y, pt.z);
- g.userData.shotKind = 'censer';
- scene.add(g);
- castleCensers.push({ x: pt.x, z: pt.z, y: pt.y, life: 8, tick: 0, mesh: g });
+ const idx = WEAPON_DEFS.findIndex(function (d) { return d.tool === 'censer'; });
+ const w = state.weapons[idx];
+ const dmg = Math.round((((w && w.def && w.def.damage) || 12)) * dmgMultOf(w, index));
+ launchBolt(index, { kind: 'fireball', effect: 'ember', speed: 200, dmg: dmg, hitRadius: 1.6 });
+ playTone(240, 140, 0.08, 0.1, 'triangle');
  }
  function lobTool(index, kind) {
  const ctx = shotContext(index);
@@ -6371,74 +7109,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return bestMark || bestAny;
  }
  function fireChain(index, w) {
- const ctx = shotContext(index);
- const hit = firstMonsterHit(index);
- if (ctx) {
- const startPt = ctx.pos.clone();
- startPt.y -= 0.12;
- let endPt = null;
- if (hit) endPt = hit.point.clone();
- else {
- const ray = aimEndPoint(ctx, 24);
- endPt = ray.end;
- startPt.copy(ray.origin);
- }
- pushFx(makeChainArrow(startPt, endPt, 0xe7e5e4), 'arrow', 0.65);
- }
- if (!hit) return;
  const baseDmg = Math.round(90 * dmgMultOf(w, index));
- damageMonster(hit.m, baseDmg, hit.point, false, index);
- queueChain(hit.m, baseDmg, 1, [hit.m], index);
+ launchBolt(index, { kind: 'arrow', effect: 'chain', speed: 200, dmg: baseDmg, baseDmg: baseDmg, hitRadius: 1.55 });
  }
  function fireRam(index, w) {
- const ctx = shotContext(index);
- const hit = firstMonsterHit(index);
- if (ctx) {
- const ray = aimEndPoint(ctx, 14);
- const end = hit ? hit.point.clone() : ray.end;
- spawnRamBlast(ray.origin, end);
- }
- if (!hit) return;
  const dmg = Math.round((w.def.damage || 80) * dmgMultOf(w, index));
- const obj = hit.object;
- let shieldish = !!(obj && obj.userData && (obj.userData.isShield || obj.userData.isPlate));
- let walk = obj;
- while (walk && !shieldish) {
- if (walk.userData && (walk.userData.isShield || walk.userData.isPlate)) shieldish = true;
- walk = walk.parent;
- }
- const m = hit.m;
- const hasPlate = (m.shieldHp || 0) > 0 || (m.plateHp || 0) > 0;
- const ramFlags = { chip: true };
- if (obj && obj.userData && obj.userData.isCrystal) ramFlags.crystal = true;
- if (obj && obj.userData && obj.userData.isFist) {
- m.fistHit = true;
- notePlayerDamage(index, 1);
- }
- if (shieldish || (hasPlate && shieldish)) {
- const shred = Math.round(dmg * 3);
- if ((m.shieldHp || 0) > 0 || shieldish) m.shieldHp = (m.shieldHp || 0) - shred;
- if ((m.plateHp || 0) > 0) m.plateHp = m.plateHp - shred;
- notePlayerDamage(index, shred);
- damageMonster(m, Math.round(dmg * 0.2), hit.point, false, index, ramFlags);
- spawnVoxelBurst(hit.point, 0xf59e0b, 10, 6);
- } else {
- damageMonster(m, Math.round(dmg * 0.2), hit.point, false, index, ramFlags);
- }
+ launchBolt(index, { kind: 'ram', effect: 'ram', speed: 200, dmg: dmg, hitRadius: 1.65 });
  }
  function paintStorm(index) {
- const pt = aimGroundPoint(index);
- const g = new THREE.Group();
- const ring = new THREE.Mesh(new THREE.RingGeometry(2.9, 3.2, 28), new THREE.MeshBasicMaterial({ color: 0xfef08a, side: THREE.DoubleSide, transparent: true, opacity: 0.8 }));
- ring.rotation.x = -Math.PI / 2;
- ring.position.y = 0.08;
- const post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 5.6, 0.16), new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.9 }));
- post.position.y = 2.85;
- g.add(ring, post);
- g.position.set(pt.x, pt.y, pt.z);
- g.userData.shotKind = 'storm';
- scene.add(g);
- castleStorms.push({ x: pt.x, z: pt.z, delay: 0.8, owner: index, mesh: g });
+ launchBolt(index, { kind: 'storm', effect: 'storm', speed: 200, dmg: 180, hitRadius: 1.7 });
  playTone(180, 90, 0.08, 0.1, 'sawtooth');
  }
  function strikeStorm(storm) {
@@ -6594,10 +7273,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  else if (tool === 'tripwire') plantTripwire(index, spent);
  }
  function clearCastleGadgets() {
+ clearPlacedMines();
  for (let i = 0; i < castleRopes.length; i++) dropMesh(castleRopes[i].mesh);
  castleRopes.length = 0;
  for (let i = 0; i < castleCensers.length; i++) dropMesh(castleCensers[i].mesh);
  castleCensers.length = 0;
+ for (let i = 0; i < emberBurns.length; i++) dropMesh(emberBurns[i].mesh);
+ emberBurns.length = 0;
  for (let i = 0; i < castleWires.length; i++) removeWire(castleWires[i]);
  castleWires.length = 0;
  for (let i = 0; i < 4; i++) {
@@ -6617,7 +7299,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  chainJumps.length = 0;
  for (let i = projectiles.length - 1; i >= 0; i--) {
  const p = projectiles[i];
- if (p.type === 'net' || p.type === 'bucket') {
+ if (p.type === 'net' || p.type === 'bucket' || p.type === 'round' || p.type === 'bolt') {
  scene.remove(p.mesh);
  disposeObject3D(p.mesh);
  projectiles.splice(i, 1);
@@ -6781,6 +7463,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
  if ((m.rootTimer || 0) > 0) m.rootTimer = Math.max(0, m.rootTimer - dt);
+ if ((m.freezeTimer || 0) > 0) m.freezeTimer = Math.max(0, m.freezeTimer - dt);
  if ((m.slowTimer || 0) > 0) m.slowTimer = Math.max(0, m.slowTimer - dt);
  if ((m.markTimer || 0) > 0) {
  m.markTimer = Math.max(0, m.markTimer - dt);
@@ -6814,6 +7497,31 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  if (c.life <= 0) { dropMesh(c.mesh); castleCensers.splice(i, 1); }
+ }
+ for (let i = emberBurns.length - 1; i >= 0; i--) {
+ const b = emberBurns[i];
+ b.life -= dt;
+ b.tick += dt;
+ if (b.mesh && b.mesh.children[0] && b.mesh.children[0].material) {
+ b.mesh.children[0].material.opacity = 0.45 + Math.abs(Math.sin(b.life * 9)) * 0.4;
+ }
+ if (b.tick >= 0.5 - 1e-4) {
+ b.tick -= 0.5;
+ const hitList = monsters.slice();
+ for (let m = 0; m < hitList.length; m++) {
+ const mon = hitList[m];
+ if (mon.hp > 0 && Math.hypot(mon.mesh.position.x - b.x, mon.mesh.position.z - b.z) <= b.radius) {
+ damageMonster(mon, 8, mon.mesh.position.clone(), false, b.owner);
+ if (mon.hp > 0) mon.burnTimer = Math.max(mon.burnTimer || 0, 1.2);
+ }
+ }
+ if (Math.hypot(player.pos.x - b.x, player.pos.z - b.z) <= b.radius) state.hp = Math.min(state.maxHp, state.hp + 4);
+ for (let p = 0; p < extraPlayers.length; p++) {
+ const ep = extraPlayers[p];
+ if (Math.hypot(ep.pos.x - b.x, ep.pos.z - b.z) <= b.radius) ep.hp = Math.min(ep.maxHp, ep.hp + 4);
+ }
+ }
+ if (b.life <= 0) { dropMesh(b.mesh); emberBurns.splice(i, 1); }
  }
  for (let i = castleStorms.length - 1; i >= 0; i--) {
  const s = castleStorms[i];
@@ -6851,9 +7559,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateShrineOffer(dt);
  syncKitePlates();
  }
- if (fast) tickLobs(dt);
  }
  function tryShoot() {
+ if (state.minesSelected) {
+ if (!state.mineFireLatch) {
+ state.mineFireLatch = true;
+ if (playerCanUseMines(0)) dropMine(0);
+ }
+ return;
+ }
  if (state.mountedTurret) {
  fireMountedDual50();
  return;
@@ -7067,6 +7781,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  else if (state.buffs.doubleDmg > 0) tCol = 0xf87171;
  spawnTracer(startPt, endPt, tCol);
  if (w.def.tool === 'lantern') spawnSlug(startPt, endPt, 0xfbbf24);
+ spawnTravelRound(startPt, endPt, tCol, 'bullet');
  }
 
  if (w.mag === 0 && w.reserve > 0) startReload();
@@ -7529,6 +8244,164 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return mesh;
  }
 
+ const bossBolts = [];
+ const bossShocks = [];
+ let bossBoltHits = 0;
+ function towerBuried(x, y, z) {
+ const towers = [
+ { x: 0, z: 19.5, r: 4.0, h: 13.5 },
+ { x: -13.5, z: 14.5, r: 3.5, h: 11.5 },
+ { x: 13.5, z: 14.5, r: 3.5, h: 11.5 }
+ ];
+ for (let i = 0; i < towers.length; i++) {
+ const t = towers[i];
+ const d = Math.hypot(x - t.x, z - t.z);
+ const roof = 3 + t.h + 0.6;
+ if (y >= roof - 0.2 && d < t.r + 0.85) return true;
+ if (y >= 2.5 && y <= roof && d <= t.r + 0.25 && d >= t.r - 1.15) return true;
+ if (y >= 8 && d < t.r - 0.35 && z > t.z - t.r) return true;
+ }
+ if (x < -36.8 || x > 36.8 || z < -59.5 || z > 20.2) return true;
+ // y near 0 is the road. Only a real fall-through or a sky clip is out of bounds.
+ if (y < -1.2 || y > 24) return true;
+ return false;
+ }
+ function safeFlyerSpot(x, z) {
+ let px = x, pz = z;
+ const towers = [
+ { x: 0, z: 19.5, r: 4.0 },
+ { x: -13.5, z: 14.5, r: 3.5 },
+ { x: 13.5, z: 14.5, r: 3.5 }
+ ];
+ for (let n = 0; n < 3; n++) {
+ let hit = false;
+ for (let i = 0; i < towers.length; i++) {
+ const t = towers[i];
+ const dx = px - t.x, dz = pz - t.z;
+ const d = Math.hypot(dx, dz) || 0.001;
+ if (d < t.r + 1.15) {
+ hit = true;
+ const push = t.r + 1.45;
+ px = t.x + (dx / d) * push;
+ pz = t.z + (dz / d) * push;
+ if (pz > t.z - t.r * 0.15) pz = t.z - push;
+ }
+ }
+ if (!hit) break;
+ }
+ px = Math.max(-34, Math.min(34, px));
+ pz = Math.max(-58, Math.min(18.2, pz));
+ if (towerBuried(px, 8, pz)) { px = 0; pz = -8; }
+ return { x: px, y: 7.4, z: pz };
+ }
+ function launchBossBolt(from, aim, dmg, color) {
+ const mesh = new THREE.Mesh(
+ new THREE.SphereGeometry(0.32, 8, 6),
+ new THREE.MeshBasicMaterial({ color: color || 0xf97316 })
+ );
+ const start = from.clone ? from.clone() : new THREE.Vector3(from.x, from.y, from.z);
+ const dest = aim.clone ? aim.clone() : new THREE.Vector3(aim.x || 0, aim.y || 1.5, aim.z || 0);
+ mesh.position.copy(start);
+ mesh.userData.shotKind = 'boss-bolt';
+ scene.add(mesh);
+ const dir = dest.sub(start);
+ if (dir.lengthSq() < 0.04) dir.set(0, 0.2, 1);
+ dir.normalize().multiplyScalar(28);
+ const bolt = { mesh: mesh, vel: dir, life: 3.4, dmg: dmg || 16, hit: false };
+ bossBolts.push(bolt);
+ return bolt;
+ }
+ function launchBossShock(x, z, radius, dmg) {
+ const mesh = makeRing(x, z, 0xfb7185, 1.25, 0.7, false);
+ mesh.userData.shotKind = 'boss-shock';
+ bossShocks.push({ mesh: mesh, x: x, z: z, r: 0.7, maxR: Math.max(1.4, radius || 2), dmg: dmg || 12, life: 1.2, hits: {} });
+ return mesh;
+ }
+ function boltHitsPlayers(pos, dmg, tag) {
+ const living = livingPlayerRecords();
+ let hit = false;
+ for (let i = 0; i < living.length; i++) {
+ const p = living[i];
+ if (pos.distanceTo(p.pos) > 1.35) continue;
+ if (settings.infiniteMode) { hit = true; continue; }
+ if (absorbFrontHit(p.index, pos)) { hit = true; continue; }
+ hurtActor(p.index, dmg, tag || 'Boss shot!');
+ bossBoltHits++;
+ hit = true;
+ }
+ return hit;
+ }
+ function updateBossBolts(dt) {
+ for (let i = bossBolts.length - 1; i >= 0; i--) {
+ const b = bossBolts[i];
+ b.life -= dt;
+ b.mesh.position.addScaledVector(b.vel, dt);
+ const hit = boltHitsPlayers(b.mesh.position, b.dmg, 'Boss bolt!');
+ if (hit || b.life <= 0) {
+ scene.remove(b.mesh);
+ bossBolts.splice(i, 1);
+ }
+ }
+ for (let i = bossShocks.length - 1; i >= 0; i--) {
+ const s = bossShocks[i];
+ s.life -= dt;
+ s.r = Math.min(s.maxR, s.r + dt * (s.maxR / 0.55));
+ if (s.mesh) s.mesh.scale.setScalar(Math.max(0.2, s.r / 0.7));
+ const living = livingPlayerRecords();
+ for (let p = 0; p < living.length; p++) {
+ const who = living[p];
+ if (s.hits[who.index]) continue;
+ if (Math.hypot(who.pos.x - s.x, who.pos.z - s.z) > s.r + 0.45) continue;
+ s.hits[who.index] = 1;
+ if (!settings.infiniteMode && !absorbFrontHit(who.index, who.pos)) {
+ hurtActor(who.index, s.dmg, 'Boss shockwave!');
+ bossBoltHits++;
+ }
+ }
+ if (s.life <= 0 || s.r >= s.maxR) {
+ if (s.mesh) scene.remove(s.mesh);
+ bossShocks.splice(i, 1);
+ }
+ }
+ }
+ function tickBossVolley(m, dt) {
+ if (!m || !m.mesh || m.hp <= 0) return;
+ if (!(m.bossKind || (m.base && m.base.isBoss))) return;
+ m.volleyCd = (m.volleyCd == null ? 0.25 : m.volleyCd) - dt;
+ if (m.volleyCd > 0) return;
+ const threat = pickThreat(m.mesh.position);
+ const from = m.mesh.position.clone().add(new THREE.Vector3(0, 1.8, 0));
+ const aim = threat.pos.clone();
+ aim.y += 0.4;
+ launchBossBolt(from, aim, Math.max(8, Math.round((m.base.dmg || 16) * 0.55 * settings.difficulty)), m.bossKind === 'warden' || m.bossKind === 'shard' ? 0x7dd3fc : 0xf97316);
+ m.volleyCd = 1.55;
+ }
+ function pullOutOfCastle(m, dt) {
+ if (!m || m.hp <= 0) return 'drop';
+ if (!m.mesh) return 'drop';
+ if (!m.mesh.parent) scene.add(m.mesh);
+ if (m.mesh.visible === false) m.mesh.visible = true;
+ const p = m.mesh.position;
+ if (!towerBuried(p.x, p.y, p.z)) { m.oobT = 0; return ''; }
+ m.oobT = (m.oobT || 0) + dt;
+ const safe = safeFlyerSpot(p.x, p.z);
+ p.set(safe.x, safe.y, safe.z);
+ m.mesh.visible = true;
+ if (towerBuried(p.x, p.y, p.z) || m.oobT > 2.6) {
+ p.set(0, 7.4, -8);
+ m.oobT = 0;
+ }
+ return 'recovered';
+ }
+ function keepBossAndFlyerHonest(m, dt) {
+ if (!m || m.debugTarget || m.hp <= 0) return;
+ const bossish = !!(m.bossKind || (m.base && m.base.isBoss));
+ const flyer = !!(m.base && m.base.flying) || m.bossKind === 'choir' || m.bossKind === 'angel';
+ if (!bossish && !flyer) return;
+ if (!m.mesh) return 'drop';
+ if (bossish) tickBossVolley(m, dt);
+ if (flyer || bossish) pullOutOfCastle(m, dt);
+ }
  function hurtPlayersNear(x, z, radius, dmg) {
  const living = livingPlayerRecords();
  for (let i = 0; i < living.length; i++) {
@@ -7618,7 +8491,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const list = [];
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
- if (m.bossKind === kind && m.hp > 0 && m.mesh && m.mesh.parent) list.push(m);
+ if (m.bossKind === kind && m.hp > 0 && m.mesh && m.mesh.parent && m.mesh.visible !== false) list.push(m);
  }
  return list;
  }
@@ -7793,7 +8666,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  m.slamHit = true;
  const ax = m.storedAim ? m.storedAim.x : pos.x;
  const az = m.storedAim ? m.storedAim.z : pos.z;
- hurtPlayersNear(ax, az, 3.4, Math.round((m.base.dmg || 51) * settings.difficulty));
+ launchBossShock(ax, az, 3.4, Math.round((m.base.dmg || 51) * settings.difficulty));
  ignoreThreat(m.lastAimIndex, 3);
  if (m.tellMesh) { killFx(m.tellMesh); m.tellMesh = null; }
  m.tellMesh = makeRing(0, 4.2, 0xef4444, 1.4, 3.4, false);
@@ -8014,7 +8887,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  m.scriptT += dt;
  m.diveTell = m.scriptT < 1;
  if (m.scriptT >= 1) {
- if (!m.diveHurt && m.hp >= (m.diveMark || 0)) hurtPlayersNear(m.diveX, m.diveZ, 2.8, Math.round(22 * settings.difficulty));
+ if (!m.diveHurt && m.hp >= (m.diveMark || 0)) launchBossShock(m.diveX, m.diveZ, 2.8, Math.round(22 * settings.difficulty));
  m.diveTell = false;
  m.script = 'idle';
  m.scriptT = 0;
@@ -8036,9 +8909,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return 'steer';
  }
  const sites = [
- { x: -13.5, y: 18.2, z: 14.5, tint: 0xf97316 },
- { x: 0, y: 21.2, z: 19.5, tint: 0x38bdf8 },
- { x: 13.5, y: 18.2, z: 14.5, tint: 0xa855f7 }
+ { x: -13.5, y: 8.4, z: 10.2, tint: 0xf97316 },
+ { x: 0, y: 9.2, z: 14.2, tint: 0x38bdf8 },
+ { x: 13.5, y: 8.4, z: 10.2, tint: 0xa855f7 }
  ];
  const site = sites[m.slot >= 0 ? m.slot : 0] || sites[0];
  if (!m.tintApplied) {
@@ -8056,7 +8929,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (m.script === 'stone') {
  m.scriptT += dt;
  if (m.scriptT >= 0.8) {
- hurtPlayersNear(m.stoneX, m.stoneZ, 2.2, Math.round(16 * settings.difficulty));
+ launchBossShock(m.stoneX, m.stoneZ, 2.2, Math.round(16 * settings.difficulty));
  m.script = 'idle';
  m.scriptT = 0;
  m.stoneCd = m.stoneGap;
@@ -8116,14 +8989,16 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  bossMoveToward(m, threat.x, threat.z, m.speed * 1.35, dt);
  if (pos.y > 6.4) pos.y -= dt * 2.2;
  if (m.scriptT >= 1.1) {
- hurtPlayersNear(pos.x, pos.z, 2.4, Math.round(18 * settings.difficulty));
+ launchBossShock(pos.x, pos.z, 2.4, Math.round(18 * settings.difficulty));
  m.script = 'hover';
  m.scriptT = 0;
  m.bossCd = 3.2;
  }
  return 'steer';
  }
- bossMoveToward(m, well.x, well.z, m.speed * 0.85, dt);
+ m.orbit = (m.orbit || 0) + dt * 0.65;
+ const hover = safeFlyerSpot(well.x + Math.cos(m.orbit) * 2.4, well.z + Math.sin(m.orbit) * 2.4);
+ bossMoveToward(m, hover.x, hover.z, m.speed * 0.85, dt);
  pos.y += (8.6 - pos.y) * Math.min(1, dt * 2.5);
  if (pos.z > 4.2 && Math.abs(pos.x) < 3.2) pos.y = Math.max(pos.y, 6.2);
  m.bossCd -= dt;
@@ -8243,7 +9118,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  } else {
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
- if (m.base && m.base.isBoss && m.hp > 0) { lead = m; break; }
+ if (m.base && m.base.isBoss && m.hp > 0 && m.mesh && m.mesh.parent && m.mesh.visible !== false) { lead = m; break; }
  }
  if (!lead) return null;
  kind = lead.bossKind || '';
@@ -8325,6 +9200,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  else if (mesh) scene.remove(mesh);
  }
  enemyBoulders.length = 0;
+ for (let i = bossBolts.length - 1; i >= 0; i--) if (bossBolts[i].mesh) scene.remove(bossBolts[i].mesh);
+ bossBolts.length = 0;
+ for (let i = bossShocks.length - 1; i >= 0; i--) if (bossShocks[i].mesh) scene.remove(bossShocks[i].mesh);
+ bossShocks.length = 0;
+ bossBoltHits = 0;
  clearBellTimer();
  if (stormRing) { dropMesh(stormRing.mesh); stormRing = null; }
  stormOwners = [];
@@ -8592,14 +9472,24 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  gFrag.className = 'g-pill' + (state.selectedGrenade === 'frag' ? ' active-frag' : '');
  gFlame.className = 'g-pill' + (state.selectedGrenade === 'flame' ? ' active-flame' : '');
  gTherm.className = 'g-pill' + (state.selectedGrenade === 'thermite' ? ' active-thermite' : '');
+ const mineCountEl = document.getElementById('mine-count');
+ const mineDropEl = document.getElementById('drop-mine-btn');
+ const mineSelEl = document.getElementById('mine-select-btn');
+ if (mineCountEl) mineCountEl.textContent = `💣 Mines ${state.mines || 0}/${MINE_CAP}`;
+ if (mineDropEl) mineDropEl.textContent = mineDropLabel(0);
+ if (mineSelEl) {
+ mineSelEl.textContent = mineSelectLabel(0, !!state.minesSelected);
+ mineSelEl.classList.toggle('active', !!state.minesSelected);
+ mineSelEl.setAttribute('aria-pressed', state.minesSelected ? 'true' : 'false');
+ }
 
  const nextMagLvl = Math.floor((state.level - 1) / 5) * 5 + 6;
  document.getElementById('mag-cap-info').textContent = `${maxMags} Mags Max (Next +1 at Lvl ${nextMagLvl})`;
  const unlockedCount = state.weapons.filter(wp => wp.unlocked).length;
- let promptHint = '[1] Reload • [2] ADS • [0] .50 Cal • [G] Grenade';
- if (activeInputMode === 'xbox') promptHint = '🎮 [RT] Shoot • [LT] ADS • [X] Reload • [Y] Weapon • [RB] Grenade • [L3] Dash';
- else if (activeInputMode === '8bitdo_ultimate') promptHint = '🎮 Ultimate: [ZR] Shoot • [ZL] ADS • [Y] Reload • [X] Weapon • [R] Grenade • [L3] Dash';
- else if (activeInputMode === '8bitdo_micro') promptHint = '🎮 Micro: [R2/A] Shoot • [L/R] Turn • [L2] ADS • [X] Reload • [Y] Weapon • [-] Grenade';
+ let promptHint = '[1] Reload • [2] ADS • [0] .50 Cal • [G] Grenade • [V] Drop Mine • [M] Select Mines';
+ if (activeInputMode === 'xbox') promptHint = '🎮 [RT] Shoot • [LT] ADS • [X] Reload • [Y] Weapon • [RB] Grenade • [L3] Dash • [R3] Drop Mine • [Back] Select Mines';
+ else if (activeInputMode === '8bitdo_ultimate') promptHint = '🎮 Ultimate: [ZR] Shoot • [ZL] ADS • [Y] Reload • [X] Weapon • [R] Grenade • [L3] Dash • [R3] Drop Mine • [−] Select Mines';
+ else if (activeInputMode === '8bitdo_micro') promptHint = '🎮 Micro: [R2/A] Shoot • [L/R] Turn • [L2] ADS • [X] Reload • [Y] Weapon • [-] Grenade • [L2+Y] Select Mines (fire drops)';
  document.getElementById('weapon-cycle-info').textContent = `Arsenal ${unlockedCount}/${state.weapons.length} • ${promptHint}`;
 
  const bEl = document.getElementById('active-buffs');
@@ -8741,6 +9631,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.castleHp = Math.min(state.maxCastleHp, 100);
  state.grenades = { frag: 2, flame: 1, thermite: 1 };
  state.selectedGrenade = 'frag';
+ state.mines = 0;
+ state.minesBought = 0;
+ state.minesBoughtLevel = 1;
+ state.minesSelected = false;
+ state.mineFireLatch = false;
  state.wave = 0; state.inWave = false;
  state.intermissionTimer = 120;
  state.toSpawn = [];
@@ -8770,14 +9665,30 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  let lastAnimAt = 0;
  let forcedDt = 0;
+ let animQueued = false;
+ let livePaused = false;
+ function queueLiveFrame() {
+ // Yield through a timer before the next frame so a rendering frame cannot
+ // lock the page. Debug steps call animate() directly and do not join this loop.
+ if (forcedDt || animQueued || livePaused) return;
+ animQueued = true;
+ setTimeout(() => {
+ requestAnimationFrame(() => {
+ animQueued = false;
+ animate();
+ queueLiveFrame();
+ });
+ }, 0);
+ }
  function animate() {
- requestAnimationFrame(animate);
  // Headless Chrome stops vsync, so a timer steps the same loop when frames stall.
  // Real browsers keep lastAnimAt fresh and the timer stays idle.
  const now = performance.now();
  if (!forcedDt && now - lastAnimAt < 12) return;
  lastAnimAt = now;
  window.__bastionFrames = (window.__bastionFrames || 0) + 1;
+ framePads = null;
+ pollGamepadsOnce();
  const dt = forcedDt || Math.min(0.05, clock.getDelta());
  simTime += dt;
  updateCastleSystems(dt, !!debugFastStep);
@@ -8788,6 +9699,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateExtraPlayers(dt);
  updateDrops(dt);
  updateCasings(dt);
+ updateProjectiles(dt);
+ updateMines(dt);
+ pollMineHotkeys();
  for (const t of deployedTurrets) {
  if (t.fireCd > 0) t.fireCd -= dt;
  if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 0.55);
@@ -8887,9 +9801,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateMenuGamepadNav(dt);
  updateP1Gamepad(dt);
  if (!state.running) {
- renderSplitScreens();
+ if (!debugSkipRender && !debugHoldRender) renderSplitScreens();
  return;
  }
+ pollMineHotkeys();
 
  if (bannerTimer > 0) {
  bannerTimer -= dt;
@@ -9096,9 +10011,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
- // UPDATE PROJECTILES (GRENADES EXPLODE/STICK ON MONSTER HIT!)
+ updateProjectiles(dt);
+ function updateProjectiles(dt) {
  for (let i = projectiles.length - 1; i >= 0; i--) {
  const p = projectiles[i];
+ if (p.type === 'round' || p.type === 'bolt') {
+ if (advanceTravelShot(p, dt)) {
+ if (p.mesh) { scene.remove(p.mesh); disposeObject3D(p.mesh); }
+ projectiles.splice(i, 1);
+ }
+ continue;
+ }
  p.fuse -= dt;
  p.vel.y -= (p.type === 'grenade' ? 22 : 9) * dt;
  p.mesh.position.addScaledVector(p.vel, dt);
@@ -9197,6 +10120,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  }
+ }
 
  // UPDATE STUCK THERMITE GRENADES
  for (let i = stuckThermites.length - 1; i >= 0; i--) {
@@ -9247,6 +10171,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  cappedVoxelBurst(new THREE.Vector3(fz.pos.x + (Math.random()-0.5)*3, fz.pos.y + 0.3, fz.pos.z + (Math.random()-0.5)*3), 0xf97316, 1, 2.5);
  for (let j = monsters.length - 1; j >= 0; j--) {
  const m = monsters[j];
+ if (!m.mesh) continue;
  if (Math.hypot(m.mesh.position.x - fz.pos.x, m.mesh.position.z - fz.pos.z) <= fz.radius) {
  m.burnTimer = Math.max(m.burnTimer, 4.0);
  damageMonster(m, 26, m.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false);
@@ -9266,6 +10191,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (let i = monsters.length - 1; i >= 0; i--) {
  const m = monsters[i];
  if (m.debugTarget) continue;
+ if (!m.mesh) {
+ if (m.bossKind || (m.base && m.base.isBoss)) monsters.splice(i, 1);
+ continue;
+ }
+ if (!m.mesh.parent || m.mesh.visible === false) {
+ const recoverable = !!(m.bossKind || (m.base && (m.base.isBoss || m.base.flying)));
+ if (recoverable) pullOutOfCastle(m, dt);
+ if (!m.mesh || !m.mesh.parent || m.mesh.visible === false) {
+ if (m.bossKind || (m.base && m.base.isBoss)) monsters.splice(i, 1);
+ continue;
+ }
+ }
  const pos = m.mesh.position;
  const prevX = pos.x;
  const prevZ = pos.z;
@@ -9282,7 +10219,6 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
- if (!m.mesh || !m.mesh.parent) continue;
  let bossMode = 'walk';
  if (m.bossKind || m.staged || m.bossGuard) bossMode = updateBossMonster(m, dt);
  if (bossMode === 'removed' || !m.mesh || !m.mesh.parent) continue;
@@ -9355,6 +10291,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  if (m.lockRoad) lockRoadMonster(m);
  applyBossPose(m);
+ if ((m.bossKind || (m.base && (m.base.isBoss || m.base.flying))) && !m.mesh) {
+ monsters.splice(i, 1);
+ continue;
+ }
+ keepBossAndFlyerHonest(m, dt);
  checkWiresCrossed(m, prevX, prevZ);
 
  // Boss Boulder & Fast Spear-Tree attacks!
@@ -9453,6 +10394,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  }
+
+ updateBossBolts(dt);
 
  // UPDATE BOSS BOULDERS (any boulder hitting the ground explodes!)
  for (let i = enemyBoulders.length - 1; i >= 0; i--) {
@@ -9557,6 +10500,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
+ updateMines(dt);
  updateDrops(dt);
 
  // PARTICLES & TRACERS
@@ -9584,7 +10528,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateViewportShops(dt);
  updateCasings(dt);
  updateHUD();
- if (!debugSkipRender) renderSplitScreens();
+ if (!debugSkipRender && !debugHoldRender) renderSplitScreens();
  }
 
  function updateDrops(dt) {
@@ -9653,6 +10597,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  silver: state.silver,
  grenades: Object.assign({}, state.grenades),
  selectedGrenade: state.selectedGrenade,
+ mines: state.mines || 0,
+ minesBought: state.minesBought || 0,
+ minesBoughtLevel: state.minesBoughtLevel || state.level,
  dual50Inventory: state.dual50Inventory,
  currentWeaponIdx: state.currentWeaponIdx,
  towerPowerCooldown: state.towerPowerCooldown,
@@ -9724,6 +10671,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  thermite: Math.floor(clampNum(dg.thermite, 0, gcap, 1))
  };
  state.selectedGrenade = ['frag', 'flame', 'thermite'].includes(data.selectedGrenade) ? data.selectedGrenade : 'frag';
+ state.mines = Math.floor(clampNum(data.mines, 0, MINE_CAP, 0));
+ state.minesBought = Math.floor(clampNum(data.minesBought, 0, MINE_CAP, 0));
+ state.minesBoughtLevel = Math.floor(clampNum(data.minesBoughtLevel, 1, 999, state.level));
+ state.minesSelected = false;
+ state.mineFireLatch = false;
+ extraPlayers.forEach(ep => {
+ ep.mines = 0;
+ ep.minesBought = 0;
+ ep.minesBoughtLevel = state.level;
+ ep.minesSelected = false;
+ ep.mineFireLatch = false;
+ });
  state.dual50Inventory = Math.floor(clampNum(data.dual50Inventory, 0, 20, 0));
  state.towerPowerCooldown = forRetry ? 0 : clampNum(data.towerPowerCooldown, 0, state.towerPowerMaxCd, 0);
  state.dashTimer = 0;
@@ -10330,7 +11289,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  session.tab = 'weapons';
  session.fitted = false;
  session.cooldown = 0.28;
- session.prev = { up: true, down: true, left: true, right: true, confirm: true, back: true };
+ session.prev = { up: true, down: true, left: true, right: true, confirm: true, back: true, lb: true, rb: true };
  session.root.style.display = 'flex';
  if (i === 0) setScoped(false);
  else {
@@ -10369,7 +11328,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (session.cooldown > 0) session.cooldown = Math.max(0, session.cooldown - dt);
  const pad = padForPlayer(i);
  const prev = session.prev || {};
- let dUp = false, dDown = false, dLeft = false, dRight = false, confirm = false, back = false;
+ let dUp = false, dDown = false, dLeft = false, dRight = false, confirm = false, back = false, lb = false, rb = false;
  if (pad) {
  const b = pad.buttons || [];
  const ax = pad.axes || [];
@@ -10380,6 +11339,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  dRight = btn(15) || ax[0] > 0.55;
  confirm = btn(0);
  back = btn(1);
+ lb = btn(4);
+ rb = btn(5);
  }
  if (pad && session.cooldown <= 0) {
  const list = shopFocusables(session);
@@ -10387,6 +11348,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (back && !prev.back) {
  closeViewportShop(i);
  continue;
+ } else if ((lb && !prev.lb) || (rb && !prev.rb)) {
+ if (switchMenuTab(session.root, (lb && !prev.lb) ? -1 : 1)) session.cooldown = 0.22;
  } else if ((dLeft && !prev.left) || (dRight && !prev.right) || (dUp && !prev.up) || (dDown && !prev.down)) {
  const dir = (dLeft && !prev.left) ? 'left' : (dRight && !prev.right) ? 'right' : (dUp && !prev.up) ? 'up' : 'down';
  const next = cur ? spatialNeighbor(list, cur, dir) : list[0];
@@ -10401,7 +11364,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  }
- session.prev = { up: dUp, down: dDown, left: dLeft, right: dRight, confirm: confirm, back: back };
+ session.prev = { up: dUp, down: dDown, left: dLeft, right: dRight, confirm: confirm, back: back, lb: lb, rb: rb };
  const listNow = shopFocusables(session);
  if (session.open && listNow.length && (!session.focusEl || listNow.indexOf(session.focusEl) < 0)) {
  focusShopControl(session, session.root.querySelector('.shop-tab.active') || listNow[0]);
@@ -10464,6 +11427,71 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  });
  });
 
+ function shopSessionForMount(mount) {
+ for (let i = 0; i < 4; i++) if (splitShops[i] && splitShops[i].root === mount) return splitShops[i];
+ return null;
+ }
+ function captureShopFocus(body, mount) {
+ const session = shopSessionForMount(mount);
+ const buttons = body ? Array.from(body.querySelectorAll('.shop-buy-btn')) : [];
+ const candidates = [session && session.focusEl, menuPadFocusEl, document.activeElement];
+ let el = null;
+ for (let i = 0; i < candidates.length; i++) {
+ const cand = candidates[i];
+ if (cand && body && body.contains(cand) && cand.classList && cand.classList.contains('shop-buy-btn')) { el = cand; break; }
+ }
+ return {
+ scroll: body ? (body.scrollTop || 0) : 0,
+ sku: el && el.dataset ? (el.dataset.sku || '') : '',
+ index: el ? buttons.indexOf(el) : -1,
+ session: session
+ };
+ }
+ function restoreShopFocus(body, mount, preserve) {
+ if (!body || !preserve) return;
+ const buttons = Array.from(body.querySelectorAll('.shop-buy-btn'));
+ let el = null;
+ if (preserve.sku) {
+ for (let i = 0; i < buttons.length; i++) if (buttons[i].dataset.sku === preserve.sku) { el = buttons[i]; break; }
+ }
+ if (!el && preserve.index >= 0 && buttons.length) el = buttons[Math.max(0, Math.min(buttons.length - 1, preserve.index))];
+ if (el) {
+ if (preserve.session) focusShopControl(preserve.session, el);
+ else {
+ menuPadFocusEl = el;
+ const all = getVisibleMenuFocusableButtons();
+ menuPadFocusIdx = Math.max(0, all.indexOf(el));
+ paintMenuFocus(el);
+ }
+ }
+ const max = Math.max(0, body.scrollHeight - body.clientHeight);
+ body.scrollTop = Math.max(0, Math.min(max, preserve.scroll || 0));
+ }
+ function cssHexColor(n) {
+ const v = (Number(n) >>> 0) & 0xffffff;
+ return '#' + v.toString(16).padStart(6, '0');
+ }
+ const weaponIconCache = new Map();
+ function weaponIconDataURL(def) {
+ if (!def) return '';
+ const key = def.id || 'gun';
+ if (weaponIconCache.has(key)) return weaponIconCache.get(key);
+ const c = document.createElement('canvas');
+ c.width = 96; c.height = 64;
+ const ctx = c.getContext('2d');
+ ctx.fillStyle = '#0b1220';
+ ctx.fillRect(0, 0, 96, 64);
+ ctx.fillStyle = cssHexColor(def.color == null ? 0x94a3b8 : def.color);
+ ctx.fillRect(8, 28, 54, 11);
+ ctx.fillStyle = cssHexColor(def.accent == null ? 0xe2e8f0 : def.accent);
+ ctx.fillRect(58, 24, 28, 8);
+ ctx.fillRect(20, 39, 9, 16);
+ ctx.fillStyle = '#f8fafc';
+ ctx.fillRect(28, 22, 12, 6);
+ const url = c.toDataURL('image/png');
+ weaponIconCache.set(key, url);
+ return url;
+ }
  function renderShop(rootEl, playerIndex, tabName) {
  const mount = (rootEl && rootEl.querySelector) ? rootEl : document.getElementById('shop-screen');
  const idx = (typeof playerIndex === 'number') ? playerIndex : shopperIndex;
@@ -10485,10 +11513,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  : `${who} — Equipped: ${w.def.name} (Mk ${toRoman(w.tier)}) — Upgrades apply ONLY to this weapon`;
 
  const body = mount.querySelector('.shop-body');
+ const shopPreserve = captureShopFocus(body, mount);
  body.innerHTML = '';
- body.scrollTop = 0;
 
- const addItem = (title, desc, priceSilver, disabled, btnText, onBuy) => {
+ const addItem = (title, desc, priceSilver, disabled, btnText, onBuy, sku, iconUrl) => {
  const div = document.createElement('div');
  div.className = 'shop-item';
  const info = document.createElement('div');
@@ -10501,6 +11529,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  info.appendChild(spanEl);
  const btn = document.createElement('button');
  btn.className = 'shop-buy-btn';
+ btn.dataset.sku = sku || title;
  btn.textContent = btnText || formatCoins(priceSilver);
  btn.disabled = disabled || state.silver < priceSilver;
  btn.addEventListener('click', () => {
@@ -10513,9 +11542,22 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  playTone(540, 880, 0.14, 0.15, 'triangle');
  updateHUD();
  updateSplitHUD();
+ const session = shopSessionForMount(mount);
+ if (session) session.focusEl = btn;
+ else menuPadFocusEl = btn;
  renderShop(mount, idx, tab);
  });
- div.appendChild(info);
+ if (iconUrl) {
+ const img = document.createElement('img');
+ img.className = 'shop-gun-icon';
+ img.alt = title;
+ img.src = iconUrl;
+ const main = document.createElement('div');
+ main.className = 'shop-item-main';
+ main.appendChild(img);
+ main.appendChild(info);
+ div.appendChild(main);
+ } else div.appendChild(info);
  div.appendChild(btn);
  body.appendChild(div);
  return div;
@@ -10532,7 +11574,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  wp.unlocked ? (idx === equippedIdx ? 'EQUIPPED' : 'EQUIP') : formatCoins(wp.def.shopPrice),
  () => {
  equipWeaponForShopper(idx);
- }
+ },
+ wp.def.id,
+ weaponIconDataURL(wp.def)
  );
  });
  addItem(
@@ -10541,7 +11585,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  160,
  false,
  formatCoins(160),
- () => { state.dual50Inventory++; }
+ () => { state.dual50Inventory++; },
+ 'dual50',
+ weaponIconDataURL({ id: 'dual50', color: 0x78350f, accent: 0xfbbf24 })
  );
  } else if (tab === 'upgrades') {
  if (w.def.noUpgrades) {
@@ -10552,6 +11598,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  msg.style.fontWeight = '800';
  msg.textContent = '⚠️ The Mortar Launcher cannot be upgraded. Switch weapons to buy upgrades for another gun.';
  body.appendChild(msg);
+ restoreShopFocus(body, mount, shopPreserve);
  return;
  }
  const mkCost = 45 * w.tier;
@@ -10639,13 +11686,44 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  addItem('⚡ Sticky Thermite (+2)', `Sticks to monsters & melts them (Have: ${gBag.thermite})`, 40, gBag.thermite >= gCap, gBag.thermite >= gCap ? 'FULL' : formatCoins(40), () => {
  gBag.thermite = Math.min(gCap, gBag.thermite + 2);
  });
+ const mineWho = mineBag(idx) || state;
+ const mineHeld = mineWho.mines || 0;
+ const mineBought = mineBoughtCount(mineWho);
+ const mineFull = mineHeld >= MINE_CAP;
+ const mineMaxed = mineBought >= MINE_CAP;
+ const mineRow = addItem(
+ '💣 Proximity Mine',
+ `Drop on the ground. Arms, then explodes when an enemy steps on it. ${formatCoins(MINE_PRICE)} each. Held ${mineHeld}/${MINE_CAP}. Bought this level ${mineBought}/${MINE_CAP}.`,
+ MINE_PRICE,
+ mineFull || mineMaxed,
+ mineFull ? 'FULL' : (mineMaxed ? 'MAX' : formatCoins(MINE_PRICE)),
+ () => {
+ const b = mineBag(idx);
+ if (!mineRoom(b)) {
+ state.silver += MINE_PRICE;
+ return;
+ }
+ giveMineStock(b);
+ }
+ );
+ if (mineRow) {
+ mineRow.dataset.item = 'mine';
+ mineRow.dataset.price = String(MINE_PRICE);
+ const mineBuy = mineRow.querySelector('.shop-buy-btn');
+ if (mineBuy) mineBuy.dataset.sku = 'mine';
+ }
  } else if (tab === 'castleworks') {
  const cw = state.castleworks;
  const gatePrices = [80, 120, 160];
  const wellPrices = [60, 90];
  const spikePrices = [50, 80];
  const kit = kitsFor(idx);
- const stamp = (key, row) => { if (row) row.dataset.cw = key; };
+ const stamp = (key, row) => {
+ if (!row) return;
+ row.dataset.cw = key;
+ const b = row.querySelector('.shop-buy-btn');
+ if (b) b.dataset.sku = 'cw-' + key;
+ };
  stamp('gate', addItem(
  'ALL — Gate Banding',
  `+25 castle max HP and +25 current HP (${cw.gate}/3)`,
@@ -10711,6 +11789,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  () => buyCastleworks('spotter', idx)
  ));
  }
+ restoreShopFocus(body, mount, shopPreserve);
  }
 
  // =========================================================================
@@ -10723,6 +11802,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let debugHideFpGuns = false;
  let debugFastStep = false;
  let debugSkipRender = false;
+ let debugHoldRender = false;
 
  function createDefenderAvatar(colorHex) {
  const g = new THREE.Group();
@@ -10814,6 +11894,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (let s = 0; s < 4; s++) splitShops[s] = null;
  numPlayers = Math.max(1, Math.min(4, count));
  courtyardNumPlayers = numPlayers;
+ syncStationProps();
  // Clear previous extra players, cameras, and first-person viewmodels
  extraPlayers.forEach(ep => {
  if (ep.avatar) scene.remove(ep.avatar);
@@ -10887,6 +11968,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }),
  grenades: { frag: 2, flame: 1, thermite: 1 },
  selectedGrenade: 'frag',
+ mines: 0,
+ minesBought: 0,
+ minesBoughtLevel: state.level,
+ minesSelected: false,
+ mineFireLatch: false,
  specialAmmo: { type: null, timer: 0 },
  recoil: 0,
  fireCd: 0,
@@ -11055,6 +12141,42 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  vp.appendChild(stats);
  vp.appendChild(prompt);
  vp.appendChild(walletEl);
+ const mineControls = document.createElement('div');
+ mineControls.className = 'vp-mine-controls';
+ const mineCount = document.createElement('div');
+ mineCount.className = 'vp-mine-count';
+ mineCount.id = 'vp-mine-count-' + i;
+ mineCount.textContent = '💣 0/10';
+ const mineSel = document.createElement('button');
+ mineSel.type = 'button';
+ mineSel.className = 'vp-mine-select';
+ mineSel.id = 'vp-mine-select-' + i;
+ mineSel.dataset.action = 'select-mines';
+ mineSel.dataset.player = String(i);
+ mineSel.textContent = mineSelectLabel(i, false);
+ mineSel.title = 'Select mines so fire drops one. P1 M/Back, P2 Num2, P3 I, P4 P. Micro: L2+Y.';
+ mineSel.addEventListener('click', (e) => {
+ e.preventDefault();
+ e.stopPropagation();
+ if (playerCanUseMines(i)) toggleMinesSelected(i);
+ });
+ const mineBtn = document.createElement('button');
+ mineBtn.type = 'button';
+ mineBtn.className = 'vp-mine-btn';
+ mineBtn.id = 'vp-drop-mine-' + i;
+ mineBtn.dataset.action = 'drop-mine';
+ mineBtn.dataset.player = String(i);
+ mineBtn.textContent = mineDropLabel(i);
+ mineBtn.title = 'Drop a proximity mine. Mouse, touch, or the labeled key. Controller R3.';
+ mineBtn.addEventListener('click', (e) => {
+ e.preventDefault();
+ e.stopPropagation();
+ if (playerCanUseMines(i)) dropMine(i);
+ });
+ mineControls.appendChild(mineCount);
+ mineControls.appendChild(mineSel);
+ mineControls.appendChild(mineBtn);
+ vp.appendChild(mineControls);
  const bossBar = document.createElement('div');
  bossBar.className = 'vp-boss';
  bossBar.id = 'vp-boss-' + i;
@@ -11109,6 +12231,19 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  el.style.display = text ? 'block' : 'none';
  const wal = document.getElementById('vp-wallet-' + i);
  if (wal) wal.textContent = walletText();
+ const bag = i <= 0 ? state : extraPlayers.find(ep => ep.index === i);
+ const mCount = document.getElementById('vp-mine-count-' + i);
+ const mSel = document.getElementById('vp-mine-select-' + i);
+ const mDrop = document.getElementById('vp-drop-mine-' + i);
+ const held = bag ? (bag.mines || 0) : 0;
+ const selected = !!(bag && bag.minesSelected);
+ if (mCount) mCount.textContent = `💣 ${held}/${MINE_CAP}`;
+ if (mDrop) mDrop.textContent = mineDropLabel(i);
+ if (mSel) {
+ mSel.textContent = mineSelectLabel(i, selected);
+ mSel.classList.toggle('active', selected);
+ mSel.setAttribute('aria-pressed', selected ? 'true' : 'false');
+ }
  }
  }
 
@@ -11217,6 +12352,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  spawnTracer(startPt, endPt, tCol);
  if (def.tool === 'lantern') spawnSlug(startPt, endPt, 0xfbbf24);
+ spawnTravelRound(startPt, endPt, tCol, 'bullet');
  }
  if (ep.mag === 0 && ep.reserve > 0) { ep.reloading = true; ep.reloadTimer = def.reloadTime; }
  }
@@ -11224,7 +12360,6 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  function updateExtraPlayers(dt) {
  if (numPlayers <= 1) return;
  if (menuBlocksGameplay()) return;
- const pads = navigator.getGamepads ? navigator.getGamepads() : [];
 
  extraPlayers.forEach(ep => {
  if (ep.buffs) {
@@ -11246,6 +12381,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ep.cam.rotation.order = 'YXZ';
  ep.cam.rotation.y = ep.yaw;
  ep.cam.rotation.x = ep.pitch;
+ ep.prevDropMineBtn = true;
+ ep.prevToggleMineBtn = true;
  showActorPrompt(ep.index, '');
  return;
  }
@@ -11277,7 +12414,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  if (pad) {
  const pIn = readPadInputs(pad);
- const epAssist = computeControllerAimAssist(ep.pos, ep.yaw, ep.pitch, dt, pIn.ads || ep.ads, pIn.shoot, pIn.profile);
+ const epAssist = computeControllerAimAssist(ep.pos, ep.yaw, ep.pitch, dt, pIn.ads || ep.ads, pIn.shoot, pIn.profile, pIn.turnYaw, pIn.turnPitch);
  moveFwd += pIn.moveFwd;
  moveStrafe += pIn.moveStrafe;
  turnYaw += pIn.turnYaw * settings.padSensitivity * epAssist.friction;
@@ -11299,6 +12436,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  if (pIn.cycleGrenade && !ep.prevGrenadeCycleBtn) cycleGrenadeType(ep);
  if (pIn.throwGrenade && !ep.prevGrenadeBtn) throwGrenade(ep.pos, ep.cam, ep);
+ if (pIn.dropMine && !ep.prevDropMineBtn && playerCanUseMines(ep.index)) dropMine(ep.index);
+ if (pIn.toggleMines && !ep.prevToggleMineBtn && playerCanUseMines(ep.index)) toggleMinesSelected(ep.index);
  if (pIn.interact && !ep.prevShopBtn) {
  if (shrineOffer && shrineOffer.owner === ep.index) resolveShrineChoice(shrineOffer.focus);
  else if (isNearArmory(ep.pos)) openShop(ep.index);
@@ -11308,6 +12447,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ep.prevDashBtn = pIn.dash;
  ep.prevGrenadeCycleBtn = pIn.cycleGrenade;
  ep.prevGrenadeBtn = pIn.throwGrenade;
+ ep.prevDropMineBtn = pIn.dropMine;
+ ep.prevToggleMineBtn = pIn.toggleMines;
  ep.prevShopBtn = pIn.interact;
  ep.prevDeploy50Btn = pIn.deploy50;
  }
@@ -11389,7 +12530,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  showActorPrompt(ep.index, epPrompt);
 
- if (wantShoot) fireExtraPlayerShot(ep);
+ if (ep.minesSelected) {
+ if (wantShoot && !ep.mineFireLatch) {
+ ep.mineFireLatch = true;
+ if (playerCanUseMines(ep.index)) dropMine(ep.index);
+ }
+ if (!wantShoot) ep.mineFireLatch = false;
+ } else if (wantShoot) fireExtraPlayerShot(ep);
  if (wantReload && !ep.prevReloadBtn && !ep.reloading) {
  const def = WEAPON_DEFS[ep.weaponIdx];
  const cap = getEffectiveMagSize(state.weapons[ep.weaponIdx] || { def: def });
@@ -11704,6 +12851,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return idx;
  },
  firePlayer(index) {
+ if (minesSelectedFor(index)) {
+ const dropped = dropMine(index);
+ updateSplitHUD();
+ return dropped;
+ }
  if (index <= 0) {
  camera.position.copy(player.pos);
  camera.rotation.order = 'YXZ';
@@ -11881,6 +13033,28 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  };
  },
  projectileCount() { return projectiles.length; },
+ clearProjectiles() {
+ for (let i = projectiles.length - 1; i >= 0; i--) {
+ const mesh = projectiles[i] && projectiles[i].mesh;
+ if (mesh) {
+ if (mesh.parent) mesh.parent.remove(mesh);
+ disposeObject3D(mesh);
+ }
+ projectiles.splice(i, 1);
+ }
+ return projectiles.length;
+ },
+ clearFireZones() {
+ for (let i = fireZones.length - 1; i >= 0; i--) {
+ const zone = fireZones[i];
+ if (zone && zone.group) {
+ scene.remove(zone.group);
+ disposeObject3D(zone.group);
+ }
+ fireZones.splice(i, 1);
+ }
+ return fireZones.length;
+ },
  lootKind(index, kind) {
  const actor = (!index || index <= 0) ? { isP1: true, label: 'P1', color: '#38bdf8' } : extraPlayers[index - 1];
  if (!actor) return false;
@@ -12050,6 +13224,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return {
  ropes: castleRopes.length,
  censers: castleCensers.length,
+ burns: emberBurns.map(function (b) { return { x: b.x, z: b.z, y: b.y, life: b.life, radius: b.radius, owner: b.owner }; }),
  wires: castleWires.map(w => ({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz, owner: w.owner })),
  stakes: pendingStakes.map(s => s ? { x: s.x, z: s.z } : null),
  storms: castleStorms.map(s => ({ x: s.x, z: s.z, delay: s.delay, owner: s.owner })),
@@ -12060,7 +13235,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  fx: castleFx.map(function (f) { return f.kind; }),
  fires: fireZones.length,
  thermites: stuckThermites.length,
- goldSparks: particles.filter(p => p.mesh && p.mesh.material && p.mesh.material.color && p.mesh.material.color.getHex() === 0xf59e0b).length
+ goldSparks: particles.filter(p => p.mesh && p.mesh.material && p.mesh.material.color && p.mesh.material.color.getHex() === 0xf59e0b).length,
+ mines: placedMines.length,
+ mineBlasts: mineBlasts.length
  };
  },
  monsterBrief() {
@@ -12075,6 +13252,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  slowMult: m.slowMult == null ? 1 : m.slowMult,
  mark: m.markTimer || 0,
  frost: !!m.frostBranded,
+ freeze: m.freezeTimer || 0,
  shield: m.shieldHp || 0,
  plate: m.plateHp || 0,
  boss: !!(m.base && m.base.isBoss),
@@ -12106,7 +13284,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  kind: obj.userData.shotKind,
  visible: obj.visible !== false,
  inScene: root === scene,
- span: Math.max(size.x, size.y, size.z)
+ span: Math.max(size.x, size.y, size.z),
+ x: obj.position.x,
+ y: obj.position.y,
+ z: obj.position.z
  });
  });
  return rows;
@@ -12477,7 +13658,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  forcedDt = 0;
- debugSkipRender = false;
+ debugSkipRender = debugHoldRender;
  settings.snow = prevSnow;
  return {
  steps: count,
@@ -12488,13 +13669,193 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  gameOver: !!state.gameOver,
  flyers: monsters.filter(m => m.base && m.base.flying).length
  };
+ },
+ mines(index) { return mineStatus(index); },
+ grantMines(index, n) { return grantMines(index, n); },
+ buyMines(index, n) { return buyMines(index, n); },
+ dropMine(index, x, z) { return dropMine(index, x, z); },
+ listMines() { return listMines(); },
+ selectMines(index, on) { return toggleMinesSelected(index, !!on); },
+ mineBlasts() { return listMineBlasts(); },
+ readPad(pad) { return readPadInputs(pad); },
+ padPolls() { return framePadPolls; },
+ setSkipRender(on) { debugHoldRender = !!on; debugSkipRender = !!on; },
+ pauseLoop(on) {
+ livePaused = !!on;
+ if (!livePaused) queueLiveFrame();
+ },
+ stepLive(n) {
+ const count = Math.max(1, n || 1);
+ const polls = [];
+ debugFastStep = false;
+ debugSkipRender = true;
+ state.running = true;
+ for (let i = 0; i < count; i++) {
+ const before = framePadPolls;
+ forcedDt = 0.05;
+ lastAnimAt = 0;
+ animate();
+ polls.push(framePadPolls - before);
+ }
+ forcedDt = 0;
+ debugSkipRender = debugHoldRender;
+ return { steps: count, polls: polls };
+ },
+ aimAssistAt(opts) {
+ opts = opts || {};
+ const origin = new THREE.Vector3(opts.x || player.pos.x, opts.y == null ? player.pos.y : opts.y, opts.z == null ? player.pos.z : opts.z);
+ return computeControllerAimAssist(origin, opts.yaw == null ? player.yaw : opts.yaw, opts.pitch == null ? player.pitch : opts.pitch, opts.dt || 0.05, !!opts.ads, !!opts.shoot, opts.profile || 'xbox', opts.stickYaw || 0, opts.stickPitch || 0);
+ },
+ aimTuning() { return { pullShoot: 4.1, frictionCap: 0.28, aimAssist: settings.aimAssist }; },
+ focusInfo() {
+ const el = menuPadFocusEl;
+ let vp = null;
+ for (let i = 0; i < 4; i++) if (splitShops[i] && splitShops[i].open) vp = splitShops[i].focusEl;
+ const pack = (node) => {
+ if (!node) return null;
+ const r = node.getBoundingClientRect();
+ return { id: node.id || '', sku: (node.dataset && node.dataset.sku) || '', text: (node.textContent || '').trim().slice(0, 48), x: r.left, y: r.top };
+ };
+ return { menu: pack(el), vp: pack(vp), active: pack(document.activeElement) };
+ },
+ focusMenu(id) {
+ const el = document.getElementById(id);
+ if (!el) return null;
+ menuPadFocusEl = el;
+ paintMenuFocus(el);
+ return id;
+ },
+ menuNav(dir) {
+ moveMenuFocus(dir);
+ return this.focusInfo();
+ },
+ pressBumper(dir) {
+ const root = activeMenuRoot();
+ switchMenuTab(root, dir < 0 ? -1 : 1);
+ const tab = root && root.querySelector('.shop-tab.active');
+ return tab ? tab.dataset.tab : '';
+ },
+ activeTab(sel) {
+ const root = document.querySelector(sel);
+ const tab = root && root.querySelector('.shop-tab.active');
+ return tab ? tab.dataset.tab : '';
+ },
+ shopRows(sel) {
+ const root = document.querySelector(sel);
+ if (!root) return [];
+ return Array.from(root.querySelectorAll('.shop-item')).map(row => {
+ const img = row.querySelector('img.shop-gun-icon, canvas');
+ const btn = row.querySelector('.shop-buy-btn');
+ return {
+ sku: btn ? (btn.dataset.sku || '') : '',
+ text: (row.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90),
+ icon: img ? (img.getAttribute('src') || '') : '',
+ w: img ? img.offsetWidth : 0,
+ h: img ? img.offsetHeight : 0
+ };
+ });
+ },
+ shopScroll(sel) {
+ const root = document.querySelector(sel);
+ const body = root && root.querySelector('.shop-body');
+ return body ? body.scrollTop : -1;
+ },
+ setShopScroll(sel, n) {
+ const root = document.querySelector(sel);
+ const body = root && root.querySelector('.shop-body');
+ if (!body) return -1;
+ body.scrollTop = n;
+ return body.scrollTop;
+ },
+ stationWorld() {
+ const c = courtyard || fallbackLayout('');
+ const rnd = (n) => Math.round(n * 1000) / 1000;
+ const signPos = (anchor) => {
+ if (!anchor) return null;
+ const p = new THREE.Vector3();
+ anchor.updateMatrixWorld(true);
+ anchor.getWorldPosition(p);
+ return { x: rnd(p.x), y: rnd(p.y), z: rnd(p.z) };
+ };
+ const well = c.well || { x: 0, z: 16 };
+ const shrine = c.shrine || { x: 11, z: 12 };
+ return {
+ players: numPlayers,
+ seed: c.code || '',
+ well: {
+ x: rnd(wellLight.position.x), z: rnd(wellLight.position.z),
+ light: { x: rnd(wellLight.position.x), y: rnd(wellLight.position.y), z: rnd(wellLight.position.z) },
+ sign: signPos(wellAnchor),
+ interact: { x: rnd(well.x), z: rnd(well.z), r: 3.6 },
+ collider: { minX: rnd(well.x - 1.7), maxX: rnd(well.x + 1.7), minZ: rnd(well.z - 1.7), maxZ: rnd(well.z + 1.7) }
+ },
+ funShop: {
+ x: rnd(shrineCrystal.position.x), z: rnd(shrineCrystal.position.z),
+ light: { x: rnd(powerLight.position.x), y: rnd(powerLight.position.y), z: rnd(powerLight.position.z) },
+ crystal: { x: rnd(shrineCrystal.position.x), y: rnd(shrineCrystal.position.y), z: rnd(shrineCrystal.position.z) },
+ sign: signPos(funAnchor),
+ interact: { x: rnd(shrine.x), z: rnd(shrine.z), r: 3.2 },
+ collider: { minX: rnd(shrine.x - 1.2), maxX: rnd(shrine.x + 1.2), minZ: rnd(shrine.z - 1.2), maxZ: rnd(shrine.z + 1.2) }
+ }
+ };
+ },
+ bossCombat() {
+ const model = bossHudModel();
+ return {
+ bolts: bossBolts.length,
+ shocks: bossShocks.length,
+ hits: bossBoltHits,
+ hud: model ? { title: model.title, hp: model.hp, kind: model.kind } : null,
+ hudShown: (() => {
+ const solo = document.getElementById('boss-hud');
+ const bars = [];
+ for (let i = 0; i < 4; i++) {
+ const el = document.getElementById('vp-boss-' + i);
+ bars.push(el ? getComputedStyle(el).display : 'missing');
+ }
+ return { solo: solo ? solo.style.display : 'missing', bars: bars };
+ })()
+ };
+ },
+ towerBuried(x, y, z) { return towerBuried(x, y, z); },
+ monsterPose() {
+ return monsters.filter(m => !m.debugTarget).map(m => ({
+ kind: m.bossKind || (m.typeKey || ''),
+ hp: m.hp,
+ x: m.mesh ? m.mesh.position.x : null,
+ y: m.mesh ? m.mesh.position.y : null,
+ z: m.mesh ? m.mesh.position.z : null,
+ visible: !!(m.mesh && m.mesh.visible !== false && m.mesh.parent),
+ buried: !!(m.mesh && towerBuried(m.mesh.position.x, m.mesh.position.y, m.mesh.position.z))
+ }));
+ },
+ forceGargoyleInside() {
+ let m = null;
+ for (let i = 0; i < monsters.length; i++) {
+ const cur = monsters[i];
+ if (cur.hp > 0 && cur.mesh && (cur.bossKind === 'angel' || cur.bossKind === 'choir' || (cur.base && cur.base.flying))) { m = cur; break; }
+ }
+ if (!m) return null;
+ m.skipGateDespawn = true;
+ m.mesh.visible = true;
+ if (!m.mesh.parent) scene.add(m.mesh);
+ m.mesh.position.set(0, 21.4, 19.5);
+ return { x: 0, y: 21.4, z: 19.5, buried: towerBuried(0, 21.4, 19.5), kind: m.bossKind || m.typeKey };
+ },
+ detachBossMesh() {
+ const m = monsters.filter(cur => cur.hp > 0 && cur.mesh && (cur.bossKind || (cur.base && cur.base.isBoss)))[0];
+ if (!m) return false;
+ scene.remove(m.mesh);
+ m.mesh.visible = false;
+ m.mesh = null;
+ return true;
  }
  };
 
  resetGame();
  refreshSaveMenuUI();
  refreshGamepadStatusUI();
- animate();
+ queueLiveFrame();
 })();
 </script>
 </body>
