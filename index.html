@@ -1255,7 +1255,8 @@
  renderer.domElement.style.pointerEvents = 'none';
  if (window.__bastionBoot) window.__bastionBoot.phase = 'renderer';
 
- scene.add(new THREE.HemisphereLight(0xdbeeff, 0x3b4d34, 0.72));
+ const hemiLight = new THREE.HemisphereLight(0xdbeeff, 0x3b4d34, 0.72);
+ scene.add(hemiLight);
 
  const sunLight = new THREE.DirectionalLight(0xfff4dc, 1.05);
  sunLight.position.set(35, 58, 22);
@@ -1282,6 +1283,846 @@
  const powerLight = new THREE.PointLight(0xc084fc, 2.4, 15);
  powerLight.position.set(11, 5.4, 12);
  scene.add(powerLight);
+
+ // Holiday themes sit on the shared courtyard. Classic is the default so older seeds stay day-lit.
+ let activeTheme = 'classic';
+ let themeRoot = null;
+ let themeLights = [];
+ let themeTrees = [];
+ let themeFog = null;
+ let themeFogBase = null;
+ let themeWisps = null;
+ let themeWispBase = null;
+ let themeGround = null;
+ let hauntFlash = null;
+ let hauntBolt = null;
+ let hauntBoltLife = 0;
+ let hauntStrike = 5.5;
+ let crowPool = [];
+ let crowTimer = 4.2;
+ let crowTurn = 0;
+ let themeTombCount = 0;
+ let themeTreeCount = 0;
+ let themeCaneCount = 0;
+ let themeSleigh = 0;
+ let themeHouse = 0;
+ let themeSnow = null;
+ let themeSnowBase = null;
+ let themeGifts = [];
+ const themeClassicBg = new THREE.Color(0x9bc4e2);
+ const themeHauntedBg = new THREE.Color(0x07061a);
+ const themeChristmasBg = new THREE.Color(0xb7d7ea);
+ const themeClassicSun = new THREE.Color(0xfff4dc);
+ const themeHauntedSun = new THREE.Color(0x9aa4ff);
+ const themeChristmasSun = new THREE.Color(0xfff3c4);
+ const boneShots = [];
+ let boneMat = null;
+ const snowShots = [];
+ let snowMat = null;
+ const playerChill = [0, 0, 0, 0];
+ function themeId() {
+ if (activeTheme === 'haunted') return 'haunted';
+ if (activeTheme === 'christmas') return 'christmas';
+ return 'classic';
+ }
+ const themeNeon = [0x38bdf8, 0xc084fc, 0xfb923c];
+ const themeYule = [0xdc2626, 0x16a34a, 0xfacc15];
+ const wispAim = new THREE.Vector3();
+ function themeKey(id) {
+ const key = String(id || '').toLowerCase();
+ if (key === 'haunted' || key === 'haunted-forest' || key === 'forest' || key === 'haunt') return 'haunted';
+ if (key === 'christmas' || key === 'xmas' || key === 'santa' || key === 'yule' || key === 'noel') return 'christmas';
+ return 'classic';
+ }
+ function applyThemeLook() {
+ const id = themeId();
+ const haunt = id === 'haunted';
+ const xmas = id === 'christmas';
+ scene.background.copy(haunt ? themeHauntedBg : (xmas ? themeChristmasBg : themeClassicBg));
+ if (scene.fog && scene.fog.color) scene.fog.color.copy(scene.background);
+ if (scene.fog) scene.fog.density = haunt ? 0.014 : (xmas ? 0.011 : 0.0085);
+ sunLight.color.copy(haunt ? themeHauntedSun : (xmas ? themeChristmasSun : themeClassicSun));
+ sunLight.intensity = haunt ? 0.34 : (xmas ? 0.78 : 1.05);
+ hemiLight.color.setHex(haunt ? 0x2a1b4a : (xmas ? 0xd7eefe : 0xdbeeff));
+ hemiLight.groundColor.setHex(haunt ? 0x0c1a12 : (xmas ? 0xc5d5c8 : 0x3b4d34));
+ hemiLight.intensity = haunt ? 0.42 : (xmas ? 0.64 : 0.72);
+ }
+ function tickPlayerChill(dt) {
+ for (let i = 0; i < 4; i++) if (playerChill[i] > 0) playerChill[i] = Math.max(0, playerChill[i] - dt);
+ }
+ function chillPlayer(index, seconds) {
+ const i = index | 0;
+ if (i < 0 || i > 3) return;
+ playerChill[i] = Math.max(playerChill[i] || 0, seconds || 2.4);
+ }
+ function chillMul(index) {
+ return playerChill[index | 0] > 0 ? 0.55 : 1;
+ }
+ function clearThemeColliders() {
+ for (let i = colliders.length - 1; i >= 0; i--) if (colliders[i].themeProp) colliders.splice(i, 1);
+ }
+ function clearThemeIce() {
+ for (let i = iceZones.length - 1; i >= 0; i--) if (iceZones[i].themeIce) iceZones.splice(i, 1);
+ }
+ function dropThemeRoot() {
+ clearThemeColliders();
+ clearThemeIce();
+ themeLights = [];
+ themeTrees = [];
+ themeFog = null;
+ themeFogBase = null;
+ themeWisps = null;
+ themeWispBase = null;
+ themeGround = null;
+ themeSnow = null;
+ themeSnowBase = null;
+ themeGifts = [];
+ themeCaneCount = 0;
+ themeSleigh = 0;
+ themeHouse = 0;
+ hauntFlash = null;
+ hauntBolt = null;
+ hauntBoltLife = 0;
+ crowPool = [];
+ themeTombCount = 0;
+ themeTreeCount = 0;
+ clearSnowballs();
+ if (!themeRoot) return;
+ scene.remove(themeRoot);
+ const seenG = [];
+ const seenM = [];
+ themeRoot.traverse(child => {
+ if (child.geometry && seenG.indexOf(child.geometry) < 0) {
+ seenG.push(child.geometry);
+ child.geometry.dispose();
+ }
+ if (!child.material) return;
+ const mats = Array.isArray(child.material) ? child.material : [child.material];
+ for (let i = 0; i < mats.length; i++) {
+ if (mats[i] && seenM.indexOf(mats[i]) < 0) {
+ seenM.push(mats[i]);
+ mats[i].dispose();
+ }
+ }
+ });
+ themeRoot = null;
+ }
+ function hauntClear(x, z, placed, gap) {
+ const f = currentField();
+ if (x < -f.halfX + 2.4 || x > f.halfX - 2.4) return false;
+ if (z < f.zSouth + 3.2 || z > -29) return false;
+ if (Math.abs(x) < 8.2) return false;
+ const yard = courtyard;
+ if (yard) {
+ const spots = [yard.well, yard.shop, yard.shrine];
+ for (let i = 0; i < spots.length; i++) {
+ const s = spots[i];
+ if (s && Math.hypot(x - s.x, z - s.z) < 5.2) return false;
+ }
+ }
+ const terrain = activeTerrain;
+ if (terrain && terrain.stream && Math.abs(z - terrain.stream.z) < (terrain.stream.halfW || 1.7) + 2.4) return false;
+ if (terrain && terrain.bridges) {
+ for (let i = 0; i < terrain.bridges.length; i++) {
+ const b = terrain.bridges[i];
+ if (Math.abs(x - b.x) < (b.hx || 2) + 1.8 && Math.abs(z - b.z) < (b.hz || 2) + 1.8) return false;
+ }
+ }
+ if (placed) {
+ const minD = gap || 2.4;
+ for (let i = 0; i < placed.length; i++) {
+ if (Math.hypot(x - placed[i].x, z - placed[i].z) < minD) return false;
+ }
+ }
+ return true;
+ }
+ function hauntPick(rng, placed, gap) {
+ const f = currentField();
+ const zLo = f.zSouth + 3.6;
+ const zHi = -29.2;
+ if (zHi <= zLo + 1) return null;
+ for (let n = 0; n < 48; n++) {
+ const side = rng() < 0.5 ? -1 : 1;
+ const inner = 8.6;
+ const outer = Math.max(inner + 1.4, f.halfX - 2.8);
+ const x = side * (inner + rng() * (outer - inner));
+ const z = zLo + rng() * (zHi - zLo);
+ if (hauntClear(x, z, placed, gap)) return { x: x, z: z };
+ }
+ return null;
+ }
+ function makeDrift(count, y0, y1, rng) {
+ const f = currentField();
+ const base = new Float32Array(count * 3);
+ const span = Math.max(6, (-28 - f.zSouth) - 2);
+ for (let i = 0; i < count; i++) {
+ const side = (i % 2 === 0) ? -1 : 1;
+ base[i * 3] = side * (1.5 + rng() * Math.max(3, f.halfX - 2.5));
+ base[i * 3 + 1] = y0 + rng() * (y1 - y0);
+ base[i * 3 + 2] = f.zSouth + 2 + rng() * span;
+ }
+ return base;
+ }
+ function addDrift(base, color, size) {
+ const geo = new THREE.BufferGeometry();
+ const positions = new Float32Array(base.length);
+ positions.set(base);
+ geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+ const mat = new THREE.PointsMaterial({ color: color, size: size, sizeAttenuation: false, transparent: true, opacity: 0.55, depthWrite: false });
+ const pts = new THREE.Points(geo, mat);
+ pts.frustumCulled = false;
+ themeRoot.add(pts);
+ return pts;
+ }
+ function driftPoints(points, base, t, speed, amp) {
+ if (!points || !base) return;
+ const arr = points.geometry.attributes.position.array;
+ const n = base.length / 3;
+ for (let i = 0; i < n; i++) {
+ const o = i * 3;
+ arr[o] = base[o] + Math.sin(t * speed + i * 0.7) * amp;
+ arr[o + 1] = base[o + 1] + Math.sin(t * (speed + 0.35) + i) * 0.2;
+ arr[o + 2] = base[o + 2] + Math.cos(t * speed * 0.8 + i * 0.5) * amp;
+ }
+ points.geometry.attributes.position.needsUpdate = true;
+ }
+ function launchCrowBurst() {
+ if (!themeTrees.length || !crowPool.length) return;
+ const tree = themeTrees[crowTurn % themeTrees.length];
+ crowTurn++;
+ for (let i = 0; i < crowPool.length; i++) {
+ const c = crowPool[i];
+ c.mesh.visible = true;
+ c.mesh.position.set(tree.x, tree.y, tree.z);
+ c.vx = (i - 1.5) * 2.4;
+ c.vy = 2.2 + i * 0.35;
+ c.vz = -1.4 - i * 0.35;
+ c.life = 2.6;
+ }
+ }
+ function buildChristmasDressing() {
+ const code = (courtyard && courtyard.code) ? courtyard.code : 'FALLBACK';
+ const rng = mulberry32(hashSeed(code + ':xmas:props'));
+ themeRoot = new THREE.Group();
+ themeRoot.name = 'christmas';
+ scene.add(themeRoot);
+ const f = currentField();
+ const placed = [];
+ const dummy = new THREE.Object3D();
+ function plant(gap) {
+ const spot = hauntPick(rng, placed, gap);
+ if (!spot) return null;
+ placed.push(spot);
+ return spot;
+ }
+ const sleighSpot = plant(4.6);
+ if (sleighSpot) {
+ const gy = getGroundHeight(sleighSpot.x, sleighSpot.z);
+ const g = new THREE.Group();
+ const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 0.85), new THREE.MeshLambertMaterial({ color: 0xdc2626 }));
+ body.position.y = 0.55;
+ const gold = new THREE.MeshLambertMaterial({ color: 0xfacc15 });
+ const runL = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.1), gold);
+ runL.position.set(0, 0.14, -0.3);
+ const runR = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.08, 0.1), gold);
+ runR.position.set(0, 0.14, 0.3);
+ const seat = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.42, 0.7), new THREE.MeshLambertMaterial({ color: 0x78350f }));
+ seat.position.set(-0.28, 0.95, 0);
+ g.add(body, runL, runR, seat);
+ g.position.set(sleighSpot.x, gy, sleighSpot.z);
+ g.rotation.y = rng() * Math.PI;
+ themeRoot.add(g);
+ themeSleigh = 1;
+ colliders.push({
+ minX: sleighSpot.x - 1.05, maxX: sleighSpot.x + 1.05, minZ: sleighSpot.z - 0.6, maxZ: sleighSpot.z + 0.6,
+ stamp: true, themeProp: true
+ });
+ }
+ const houseSpot = plant(4.6);
+ if (houseSpot) {
+ const gy = getGroundHeight(houseSpot.x, houseSpot.z);
+ const g = new THREE.Group();
+ const wall = new THREE.Mesh(new THREE.BoxGeometry(1.55, 1.05, 1.2), new THREE.MeshLambertMaterial({ color: 0xb45309 }));
+ wall.position.y = 0.55;
+ const icing = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.16, 1.35), new THREE.MeshLambertMaterial({ color: 0xfff7ed }));
+ icing.position.y = 1.12;
+ const roof = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.42, 0.95), new THREE.MeshLambertMaterial({ color: 0xf8fafc }));
+ roof.position.y = 1.42;
+ const candy = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.16, 0.16), new THREE.MeshLambertMaterial({ color: 0xdc2626 }));
+ candy.position.set(0.35, 0.7, 0.62);
+ g.add(wall, icing, roof, candy);
+ g.position.set(houseSpot.x, gy, houseSpot.z);
+ themeRoot.add(g);
+ themeHouse = 1;
+ colliders.push({
+ minX: houseSpot.x - 0.85, maxX: houseSpot.x + 0.85, minZ: houseSpot.z - 0.7, maxZ: houseSpot.z + 0.7,
+ stamp: true, themeProp: true
+ });
+ }
+ const trees = [];
+ for (let i = 0; i < 6; i++) {
+ const spot = plant(3.2);
+ if (!spot) break;
+ trees.push(spot);
+ }
+ themeTreeCount = trees.length;
+ if (themeTreeCount > 0) {
+ const trunkGeo = new THREE.BoxGeometry(0.28, 0.7, 0.28);
+ const midGeo = new THREE.BoxGeometry(1.15, 0.7, 1.15);
+ const topGeo = new THREE.BoxGeometry(0.68, 0.52, 0.68);
+ const starGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+ const trunks = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: 0x5c3317 }), themeTreeCount);
+ const mids = new THREE.InstancedMesh(midGeo, new THREE.MeshLambertMaterial({ color: 0x166534 }), themeTreeCount);
+ const tops = new THREE.InstancedMesh(topGeo, new THREE.MeshLambertMaterial({ color: 0x15803d }), themeTreeCount);
+ const stars = new THREE.InstancedMesh(starGeo, new THREE.MeshBasicMaterial({ color: 0xfacc15 }), themeTreeCount);
+ for (let i = 0; i < themeTreeCount; i++) {
+ const spot = trees[i];
+ const gy = getGroundHeight(spot.x, spot.z);
+ dummy.rotation.set(0, 0, 0);
+ dummy.scale.set(1, 1, 1);
+ dummy.position.set(spot.x, gy + 0.35, spot.z);
+ dummy.updateMatrix();
+ trunks.setMatrixAt(i, dummy.matrix);
+ dummy.position.y = gy + 1.05;
+ dummy.updateMatrix();
+ mids.setMatrixAt(i, dummy.matrix);
+ dummy.position.y = gy + 1.58;
+ dummy.updateMatrix();
+ tops.setMatrixAt(i, dummy.matrix);
+ dummy.position.y = gy + 1.98;
+ dummy.updateMatrix();
+ stars.setMatrixAt(i, dummy.matrix);
+ themeTrees.push({ x: spot.x, y: gy + 2.1, z: spot.z });
+ colliders.push({
+ minX: spot.x - 0.55, maxX: spot.x + 0.55, minZ: spot.z - 0.55, maxZ: spot.z + 0.55,
+ stamp: true, themeProp: true
+ });
+ }
+ trunks.instanceMatrix.needsUpdate = true;
+ mids.instanceMatrix.needsUpdate = true;
+ tops.instanceMatrix.needsUpdate = true;
+ stars.instanceMatrix.needsUpdate = true;
+ themeRoot.add(trunks, mids, tops, stars);
+ }
+ const canes = [];
+ for (let i = 0; i < 5; i++) {
+ const spot = plant(2.7);
+ if (!spot) break;
+ canes.push(spot);
+ }
+ themeCaneCount = canes.length;
+ if (themeCaneCount > 0) {
+ const shaftGeo = new THREE.BoxGeometry(0.22, 1.7, 0.22);
+ const hookGeo = new THREE.BoxGeometry(0.55, 0.18, 0.18);
+ const shafts = new THREE.InstancedMesh(shaftGeo, new THREE.MeshLambertMaterial({ color: 0xdc2626 }), themeCaneCount);
+ const hooks = new THREE.InstancedMesh(hookGeo, new THREE.MeshLambertMaterial({ color: 0xf8fafc }), themeCaneCount);
+ for (let i = 0; i < themeCaneCount; i++) {
+ const spot = canes[i];
+ const gy = getGroundHeight(spot.x, spot.z);
+ dummy.rotation.set(0, rng() * 0.5, 0.18);
+ dummy.scale.set(1, 1, 1);
+ dummy.position.set(spot.x, gy + 0.85, spot.z);
+ dummy.updateMatrix();
+ shafts.setMatrixAt(i, dummy.matrix);
+ dummy.position.y = gy + 1.7;
+ dummy.updateMatrix();
+ hooks.setMatrixAt(i, dummy.matrix);
+ colliders.push({
+ minX: spot.x - 0.28, maxX: spot.x + 0.28, minZ: spot.z - 0.28, maxZ: spot.z + 0.28,
+ stamp: true, themeProp: true
+ });
+ }
+ shafts.instanceMatrix.needsUpdate = true;
+ hooks.instanceMatrix.needsUpdate = true;
+ themeRoot.add(shafts, hooks);
+ }
+ const giftColors = [0xdc2626, 0x16a34a, 0xfacc15, 0x2563eb];
+ const giftGeo = new THREE.BoxGeometry(0.72, 0.5, 0.72);
+ const ribGeo = new THREE.BoxGeometry(0.12, 0.54, 0.76);
+ const ribMat = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
+ for (let i = 0; i < 8; i++) {
+ const spot = plant(2.2);
+ if (!spot) break;
+ const gy = getGroundHeight(spot.x, spot.z);
+ const col = giftColors[i % giftColors.length];
+ const g = new THREE.Group();
+ const box = new THREE.Mesh(giftGeo, new THREE.MeshLambertMaterial({ color: col }));
+ box.position.y = 0.28;
+ const rib = new THREE.Mesh(ribGeo, ribMat);
+ rib.position.y = 0.28;
+ g.add(box, rib);
+ g.position.set(spot.x, gy, spot.z);
+ g.rotation.y = rng() * 0.8;
+ const gift = { x: spot.x, y: gy + 0.3, z: spot.z, hp: 36, color: col, mesh: g };
+ g.userData.gift = gift;
+ box.userData.gift = gift;
+ rib.userData.gift = gift;
+ themeRoot.add(g);
+ themeGifts.push(gift);
+ colliders.push({
+ minX: spot.x - 0.42, maxX: spot.x + 0.42, minZ: spot.z - 0.42, maxZ: spot.z + 0.42,
+ stamp: true, themeProp: true, gift: gift
+ });
+ }
+ for (let i = 0; i < 4; i++) {
+ const spot = plant(3.0);
+ if (!spot) break;
+ const gy = getGroundHeight(spot.x, spot.z);
+ const patch = new THREE.Mesh(
+ new THREE.CircleGeometry(1.35, 8),
+ new THREE.MeshBasicMaterial({ color: 0xdbeafe, transparent: true, opacity: 0.75, depthWrite: false })
+ );
+ patch.rotation.x = -Math.PI / 2;
+ patch.position.set(spot.x, gy + 0.08, spot.z);
+ themeRoot.add(patch);
+ iceZones.push({ x: spot.x, z: spot.z, r: 1.35, themeIce: true });
+ }
+ const lampSpots = [
+ { x: -7.4, z: -16 }, { x: -8.6, z: -22 }, { x: -7.5, z: -28 },
+ { x: 7.4, z: -16 }, { x: 8.6, z: -22 }, { x: 7.5, z: -28 }
+ ];
+ const bulbGeo = new THREE.BoxGeometry(0.18, 0.22, 0.18);
+ const bulbs = new THREE.InstancedMesh(bulbGeo, new THREE.MeshBasicMaterial({ color: 0xfff7ed }), lampSpots.length);
+ for (let i = 0; i < lampSpots.length; i++) {
+ const spot = lampSpots[i];
+ const gy = getGroundHeight(spot.x, spot.z);
+ const y = gy + 3.5;
+ dummy.rotation.set(0, 0, 0);
+ dummy.scale.set(1, 1, 1);
+ dummy.position.set(spot.x, y, spot.z);
+ dummy.updateMatrix();
+ bulbs.setMatrixAt(i, dummy.matrix);
+ const light = new THREE.PointLight(themeYule[i % 3], 1.35, 12);
+ light.position.set(spot.x, y, spot.z);
+ themeRoot.add(light);
+ themeLights.push({ light: light, base: 1.35, phase: i * 0.95, speed: 2.1 + (i % 3) * 0.45 });
+ }
+ bulbs.instanceMatrix.needsUpdate = true;
+ themeRoot.add(bulbs);
+ const snowBase = makeDrift(48, 0.8, 8.4, rng);
+ themeSnowBase = snowBase;
+ themeSnow = addDrift(snowBase, 0xffffff, 11);
+ const depth = Math.max(8, -28 - f.zSouth);
+ const groundGeo = new THREE.PlaneGeometry(Math.max(16, (f.halfX - 1) * 2), depth);
+ const groundMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc, transparent: true, opacity: 0.24, depthWrite: false });
+ themeGround = new THREE.Mesh(groundGeo, groundMat);
+ themeGround.rotation.x = -Math.PI / 2;
+ themeGround.position.set(0, 0.08, f.zSouth + depth * 0.5);
+ themeRoot.add(themeGround);
+ }
+ function updateThemeSnow(t) {
+ if (!themeSnow || !themeSnowBase) return;
+ const arr = themeSnow.geometry.attributes.position.array;
+ const n = themeSnowBase.length / 3;
+ const span = 8;
+ for (let i = 0; i < n; i++) {
+ const o = i * 3;
+ const fall = t * (1.05 + (i % 4) * 0.22);
+ arr[o] = themeSnowBase[o] + Math.sin(t * 0.45 + i) * 0.85;
+ arr[o + 1] = 0.4 + ((themeSnowBase[o + 1] - fall) % span + span) % span;
+ arr[o + 2] = themeSnowBase[o + 2] + Math.cos(t * 0.32 + i * 0.4) * 0.7;
+ }
+ themeSnow.geometry.attributes.position.needsUpdate = true;
+ }
+ function updateChristmasFx(dt) {
+ const t = simTime;
+ for (let i = 0; i < themeLights.length; i++) {
+ const lamp = themeLights[i];
+ const wave = Math.sin(t * lamp.speed + lamp.phase);
+ lamp.light.intensity = lamp.base * (0.32 + 0.68 * (wave * 0.5 + 0.5));
+ }
+ updateThemeSnow(t);
+ }
+ function giftNear(pos, radius) {
+ if (!pos || !themeGifts.length) return null;
+ const r2 = radius * radius;
+ for (let i = 0; i < themeGifts.length; i++) {
+ const g = themeGifts[i];
+ if (!g || g.hp <= 0) continue;
+ const dx = g.x - pos.x;
+ const dy = g.y - pos.y;
+ const dz = g.z - pos.z;
+ if (dx * dx + dy * dy + dz * dz <= r2) return g;
+ }
+ return null;
+ }
+ function breakGift(gift, dmg) {
+ if (!gift || gift.hp <= 0) return false;
+ gift.hp -= (dmg || 40);
+ if (gift.hp > 0) return true;
+ gift.hp = 0;
+ if (gift.mesh) gift.mesh.visible = false;
+ for (let i = colliders.length - 1; i >= 0; i--) if (colliders[i].gift === gift) colliders.splice(i, 1);
+ const pos = new THREE.Vector3(gift.x, gift.y, gift.z);
+ spawnCoinDrop(pos, false, 8);
+ spawnVoxelBurst(pos, gift.color || 0xdc2626, 8, 4.2);
+ return true;
+ }
+ function rebuildThemeDressing() {
+ dropThemeRoot();
+ applyThemeLook();
+ if (themeId() === 'christmas') { buildChristmasDressing(); return; }
+ if (themeId() !== 'haunted') return;
+ const code = (courtyard && courtyard.code) ? courtyard.code : 'FALLBACK';
+ const rng = mulberry32(hashSeed(code + ':haunt:props'));
+ themeRoot = new THREE.Group();
+ themeRoot.name = 'haunted-forest';
+ scene.add(themeRoot);
+ const f = currentField();
+ const placed = [];
+ const tombCap = 14;
+ for (let i = 0; i < tombCap; i++) {
+ const spot = hauntPick(rng, placed, 2.6);
+ if (!spot) break;
+ placed.push(spot);
+ }
+ themeTombCount = placed.length;
+ if (themeTombCount > 0) {
+ const stoneGeo = new THREE.BoxGeometry(0.72, 1.16, 0.28);
+ const footGeo = new THREE.BoxGeometry(0.92, 0.22, 0.48);
+ const stoneMat = new THREE.MeshLambertMaterial({ color: 0x4c1d95 });
+ const footMat = new THREE.MeshLambertMaterial({ color: 0x1e1b4b });
+ const stones = new THREE.InstancedMesh(stoneGeo, stoneMat, themeTombCount);
+ const feet = new THREE.InstancedMesh(footGeo, footMat, themeTombCount);
+ stones.castShadow = false;
+ feet.castShadow = false;
+ const dummy = new THREE.Object3D();
+ for (let i = 0; i < themeTombCount; i++) {
+ const spot = placed[i];
+ const gy = getGroundHeight(spot.x, spot.z);
+ dummy.position.set(spot.x, gy + 0.6, spot.z);
+ dummy.rotation.set(0, rng() * 0.5 - 0.25, 0);
+ dummy.scale.set(1, 1, 1);
+ dummy.updateMatrix();
+ stones.setMatrixAt(i, dummy.matrix);
+ dummy.position.y = gy + 0.12;
+ dummy.updateMatrix();
+ feet.setMatrixAt(i, dummy.matrix);
+ colliders.push({
+ minX: spot.x - 0.5, maxX: spot.x + 0.5, minZ: spot.z - 0.3, maxZ: spot.z + 0.3,
+ stamp: true, themeProp: true
+ });
+ }
+ stones.instanceMatrix.needsUpdate = true;
+ feet.instanceMatrix.needsUpdate = true;
+ themeRoot.add(stones);
+ themeRoot.add(feet);
+ }
+ const trees = [];
+ for (let i = 0; i < 6; i++) {
+ const spot = hauntPick(rng, placed, 3.4);
+ if (!spot) break;
+ placed.push(spot);
+ trees.push(spot);
+ }
+ themeTreeCount = trees.length;
+ if (themeTreeCount > 0) {
+ const trunkGeo = new THREE.BoxGeometry(0.28, 2.5, 0.28);
+ const limbGeo = new THREE.BoxGeometry(1.15, 0.12, 0.12);
+ const bark = new THREE.MeshLambertMaterial({ color: 0x1c1917 });
+ const trunks = new THREE.InstancedMesh(trunkGeo, bark, themeTreeCount);
+ const limbs = new THREE.InstancedMesh(limbGeo, bark, themeTreeCount);
+ const dummy = new THREE.Object3D();
+ for (let i = 0; i < themeTreeCount; i++) {
+ const spot = trees[i];
+ const gy = getGroundHeight(spot.x, spot.z);
+ dummy.position.set(spot.x, gy + 1.25, spot.z);
+ dummy.rotation.set(0, 0, 0);
+ dummy.scale.set(1, 1, 1);
+ dummy.updateMatrix();
+ trunks.setMatrixAt(i, dummy.matrix);
+ dummy.position.set(spot.x, gy + 2.15, spot.z);
+ dummy.rotation.z = (i % 2 === 0 ? 0.4 : -0.35);
+ dummy.updateMatrix();
+ limbs.setMatrixAt(i, dummy.matrix);
+ themeTrees.push({ x: spot.x, y: gy + 2.45, z: spot.z });
+ }
+ trunks.instanceMatrix.needsUpdate = true;
+ limbs.instanceMatrix.needsUpdate = true;
+ themeRoot.add(trunks);
+ themeRoot.add(limbs);
+ }
+ const lightSpots = placed.length ? placed : [{ x: 12, z: -36 }];
+ for (let i = 0; i < 6; i++) {
+ const spot = lightSpots[i % lightSpots.length];
+ const gy = getGroundHeight(spot.x, spot.z);
+ const light = new THREE.PointLight(themeNeon[i % 3], 1.8, 16);
+ light.position.set(spot.x + (i % 2 ? 1.1 : -1.1), gy + 2.5, spot.z + ((i % 3) - 1) * 0.4);
+ themeRoot.add(light);
+ themeLights.push({ light: light, base: 1.8, phase: i * 1.17, speed: 2.6 + (i % 3) * 0.85 });
+ }
+ const fogBase = makeDrift(48, 0.28, 1.05, rng);
+ themeFogBase = fogBase;
+ themeFog = addDrift(fogBase, 0xc4b5fd, 12);
+ const wispBase = makeDrift(28, 1.5, 3.1, rng);
+ themeWispBase = wispBase;
+ themeWisps = addDrift(wispBase, 0xfb923c, 7);
+ const depth = Math.max(8, -28 - f.zSouth);
+ const groundGeo = new THREE.PlaneGeometry(Math.max(16, (f.halfX - 1) * 2), depth);
+ const groundMat = new THREE.MeshBasicMaterial({ color: 0x1a1038, transparent: true, opacity: 0.34, depthWrite: false });
+ themeGround = new THREE.Mesh(groundGeo, groundMat);
+ themeGround.rotation.x = -Math.PI / 2;
+ themeGround.position.set(0, 0.1, f.zSouth + depth * 0.5);
+ themeRoot.add(themeGround);
+ hauntFlash = new THREE.PointLight(0xe0e7ff, 0, 70);
+ hauntFlash.position.set(0, 18, -36);
+ themeRoot.add(hauntFlash);
+ const boltGeo = new THREE.BufferGeometry();
+ boltGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
+ hauntBolt = new THREE.Line(boltGeo, new THREE.LineBasicMaterial({ color: 0xe0e7ff }));
+ hauntBolt.visible = false;
+ hauntBolt.frustumCulled = false;
+ themeRoot.add(hauntBolt);
+ const crowMat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a });
+ const crowGeo = new THREE.BoxGeometry(0.36, 0.14, 0.5);
+ for (let i = 0; i < 4; i++) {
+ const mesh = new THREE.Mesh(crowGeo, crowMat);
+ mesh.visible = false;
+ themeRoot.add(mesh);
+ crowPool.push({ mesh: mesh, vx: 0, vy: 0, vz: 0, life: 0 });
+ }
+ crowTimer = 3.2;
+ }
+ function updateThemeFx(dt) {
+ if (!themeRoot) return;
+ if (themeId() === 'christmas') { updateChristmasFx(dt); return; }
+ if (themeId() !== 'haunted') return;
+ const t = simTime;
+ for (let i = 0; i < themeLights.length; i++) {
+ const lamp = themeLights[i];
+ const wave = Math.sin(t * lamp.speed + lamp.phase);
+ lamp.light.intensity = lamp.base * (0.28 + 0.72 * (wave * 0.5 + 0.5));
+ }
+ driftPoints(themeFog, themeFogBase, t, 0.22, 0.9);
+ driftPoints(themeWisps, themeWispBase, t, 0.85, 1.35);
+ crowTimer -= dt;
+ if (crowTimer <= 0) {
+ crowTimer = 5.4;
+ launchCrowBurst();
+ }
+ for (let i = 0; i < crowPool.length; i++) {
+ const crow = crowPool[i];
+ if (!crow.mesh.visible) continue;
+ crow.life -= dt;
+ crow.mesh.position.x += crow.vx * dt;
+ crow.mesh.position.y += crow.vy * dt;
+ crow.mesh.position.z += crow.vz * dt;
+ crow.vy -= dt * 0.4;
+ if (crow.life <= 0) crow.mesh.visible = false;
+ }
+ hauntStrike -= dt;
+ if (hauntStrike <= 0 && hauntFlash && hauntBolt) {
+ hauntStrike = 6.5 + (t % 2.5);
+ const x = ((t % 2) < 1 ? -1 : 1) * (10 + (t % 7));
+ const z = -34 - (t % 8);
+ hauntFlash.position.set(x, 16, z);
+ hauntFlash.intensity = 7.5;
+ const arr = hauntBolt.geometry.attributes.position.array;
+ const gy = getGroundHeight(x, z);
+ arr[0] = x; arr[1] = 22; arr[2] = z;
+ arr[3] = x + 1.4; arr[4] = gy + 0.2; arr[5] = z + 0.6;
+ hauntBolt.geometry.attributes.position.needsUpdate = true;
+ hauntBolt.visible = true;
+ hauntBoltLife = 0.16;
+ }
+ if (hauntFlash && hauntFlash.intensity > 0) hauntFlash.intensity = Math.max(0, hauntFlash.intensity - dt * 36);
+ if (hauntBoltLife > 0) {
+ hauntBoltLife -= dt;
+ if (hauntBoltLife <= 0 && hauntBolt) hauntBolt.visible = false;
+ }
+ }
+ function themeInfo() {
+ const colors = [];
+ const flicker = [];
+ for (let i = 0; i < themeLights.length; i++) {
+ colors.push(themeLights[i].light.color.getHex());
+ flicker.push(Math.round(themeLights[i].light.intensity * 100) / 100);
+ }
+ let fogX = 0;
+ if (themeFog && themeFog.geometry && themeFog.geometry.attributes.position) fogX = themeFog.geometry.attributes.position.array[0];
+ return {
+ id: themeId(),
+ sky: scene.background ? scene.background.getHex() : 0,
+ fog: (scene.fog && scene.fog.color) ? scene.fog.color.getHex() : 0,
+ fogDensity: scene.fog ? scene.fog.density : 0,
+ sun: sunLight.color.getHex(),
+ sunIntensity: sunLight.intensity,
+ tombs: themeTombCount,
+ trees: themeTreeCount,
+ lights: themeLights.length,
+ lightColors: colors,
+ flicker: flicker,
+ fogOn: !!(themeFog && themeFog.visible),
+ wispsOn: !!(themeWisps && themeWisps.visible),
+ ground: !!(themeGround && themeGround.visible),
+ fogX: fogX,
+ snowOn: !!(themeSnow && themeSnow.visible),
+ snowY: (themeSnow && themeSnow.geometry && themeSnow.geometry.attributes.position) ? themeSnow.geometry.attributes.position.array[1] : 0,
+ canes: themeCaneCount,
+ presents: themeGifts.filter(g => g.hp > 0).length,
+ presentColors: themeGifts.filter(g => g.hp > 0).map(g => g.color).filter((c, i, arr) => arr.indexOf(c) === i),
+ gifts: themeGifts.filter(g => g.hp > 0).map(g => ({ x: g.x, y: g.y, z: g.z, hp: g.hp, color: g.color })),
+ sleigh: themeSleigh,
+ house: themeHouse,
+ ice: iceZones.filter(z => z.themeIce).length,
+ iceSpots: iceZones.filter(z => z.themeIce).map(z => ({ x: z.x, z: z.z, r: z.r })),
+ boss: themeId() === 'haunted' ? 'wraith' : (themeId() === 'christmas' ? 'santa' : ''),
+ gun: themeId() === 'haunted' ? 'ghost_lantern' : (themeId() === 'christmas' ? 'candy_blaster' : ''),
+ krampus: themeId() === 'christmas' ? 'krampus' : ''
+ };
+ }
+ function setTheme(id) {
+ activeTheme = themeKey(id);
+ rebuildThemeDressing();
+ return themeInfo();
+ }
+ function ensureBonePool() {
+ if (boneShots.length >= 12) return;
+ if (!boneMat) boneMat = new THREE.MeshBasicMaterial({ color: 0xf5f3ff });
+ if (!boneShots.geom) boneShots.geom = new THREE.BoxGeometry(0.16, 0.16, 0.55);
+ while (boneShots.length < 12) {
+ const mesh = new THREE.Mesh(boneShots.geom, boneMat);
+ mesh.visible = false;
+ mesh.userData.shotKind = 'bone';
+ scene.add(mesh);
+ boneShots.push({ mesh: mesh, life: 0, vx: 0, vy: 0, vz: 0, active: false, dmg: 8 });
+ }
+ }
+ function clearBoneShots() {
+ for (let i = 0; i < boneShots.length; i++) {
+ boneShots[i].active = false;
+ boneShots[i].life = 0;
+ if (boneShots[i].mesh) boneShots[i].mesh.visible = false;
+ }
+ }
+ function launchBoneShot(m) {
+ if (!m || !m.mesh) return;
+ ensureBonePool();
+ let slot = null;
+ for (let i = 0; i < boneShots.length; i++) if (!boneShots[i].active) { slot = boneShots[i]; break; }
+ if (!slot) return;
+ const threat = pickThreat(m.mesh.position);
+ const sx = m.mesh.position.x;
+ const sy = m.mesh.position.y + 1.15;
+ const sz = m.mesh.position.z;
+ const tx = threat.pos.x;
+ const ty = threat.pos.y + 0.15;
+ const tz = threat.pos.z;
+ const dx = tx - sx;
+ const dy = ty - sy;
+ const dz = tz - sz;
+ const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+ const speed = 16;
+ slot.vx = dx / len * speed;
+ slot.vy = dy / len * speed;
+ slot.vz = dz / len * speed;
+ slot.life = 2.4;
+ slot.active = true;
+ slot.dmg = 8;
+ slot.mesh.visible = true;
+ slot.mesh.position.set(sx, sy, sz);
+ }
+ function updateBoneShots(dt) {
+ if (!boneShots.length) return;
+ let living = null;
+ for (let i = 0; i < boneShots.length; i++) {
+ const b = boneShots[i];
+ if (!b.active) continue;
+ if (!living) living = livingPlayerRecords();
+ b.life -= dt;
+ b.mesh.position.x += b.vx * dt;
+ b.mesh.position.y += b.vy * dt;
+ b.mesh.position.z += b.vz * dt;
+ let hit = false;
+ for (let p = 0; p < living.length; p++) {
+ const who = living[p];
+ const dx = who.pos.x - b.mesh.position.x;
+ const dy = who.pos.y - b.mesh.position.y;
+ const dz = who.pos.z - b.mesh.position.z;
+ if (dx * dx + dy * dy + dz * dz > 1.96) continue;
+ hit = true;
+ if (!settings.infiniteMode && !absorbFrontHit(who.index, b.mesh.position)) hurtActor(who.index, b.dmg || 8, 'Bone shot!');
+ }
+ if (hit || b.life <= 0) {
+ b.active = false;
+ b.mesh.visible = false;
+ }
+ }
+ }
+ function ensureSnowPool() {
+ if (snowShots.length >= 12) return;
+ if (!snowMat) snowMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc });
+ if (!snowShots.geom) snowShots.geom = new THREE.SphereGeometry(0.22, 8, 6);
+ while (snowShots.length < 12) {
+ const mesh = new THREE.Mesh(snowShots.geom, snowMat);
+ mesh.visible = false;
+ mesh.userData.shotKind = 'snowball';
+ scene.add(mesh);
+ snowShots.push({ mesh: mesh, life: 0, vx: 0, vy: 0, vz: 0, active: false, dmg: 6 });
+ }
+ }
+ function clearSnowballs() {
+ for (let i = 0; i < snowShots.length; i++) {
+ snowShots[i].active = false;
+ snowShots[i].life = 0;
+ if (snowShots[i].mesh) snowShots[i].mesh.visible = false;
+ }
+ }
+ function launchSnowball(m) {
+ if (!m || !m.mesh) return;
+ ensureSnowPool();
+ let slot = null;
+ for (let i = 0; i < snowShots.length; i++) if (!snowShots[i].active) { slot = snowShots[i]; break; }
+ if (!slot) return;
+ const threat = pickThreat(m.mesh.position);
+ const sx = m.mesh.position.x;
+ const sy = m.mesh.position.y + 1.25;
+ const sz = m.mesh.position.z;
+ const tx = threat.pos.x;
+ const ty = threat.pos.y + 0.2;
+ const tz = threat.pos.z;
+ const dx = tx - sx;
+ const dy = ty - sy;
+ const dz = tz - sz;
+ const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+ const speed = 16;
+ slot.vx = dx / len * speed;
+ slot.vy = dy / len * speed;
+ slot.vz = dz / len * speed;
+ slot.life = 2.6;
+ slot.active = true;
+ slot.dmg = 6;
+ slot.mesh.visible = true;
+ slot.mesh.position.set(sx, sy, sz);
+ }
+ function updateSnowballs(dt) {
+ if (!snowShots.length) return;
+ let living = null;
+ for (let i = 0; i < snowShots.length; i++) {
+ const b = snowShots[i];
+ if (!b.active) continue;
+ if (!living) living = livingPlayerRecords();
+ b.life -= dt;
+ b.mesh.position.x += b.vx * dt;
+ b.mesh.position.y += b.vy * dt;
+ b.mesh.position.z += b.vz * dt;
+ let hit = false;
+ for (let p = 0; p < living.length; p++) {
+ const who = living[p];
+ const dx = who.pos.x - b.mesh.position.x;
+ const dy = who.pos.y - b.mesh.position.y;
+ const dz = who.pos.z - b.mesh.position.z;
+ if (dx * dx + dy * dy + dz * dz > 1.96) continue;
+ hit = true;
+ chillPlayer(who.index, 2.6);
+ if (!settings.infiniteMode && !absorbFrontHit(who.index, b.mesh.position)) hurtActor(who.index, b.dmg || 6, 'Snowball!');
+ }
+ if (hit || b.life <= 0) {
+ b.active = false;
+ b.mesh.visible = false;
+ }
+ }
+ }
 
  // =========================================================================
  // HIGH-COUNT INSTANCED VOXEL WORLD (CASTLE ON ROCKY HILL RISING FROM WATER)
@@ -2386,6 +3227,7 @@
  rebuildWorldMesh();
  syncStationProps();
  updateSeedChips();
+ rebuildThemeDressing();
  }
  function layoutSignature(layout) {
  if (!layout) return '';
@@ -2478,7 +3320,8 @@
  meshCount: meshes,
  ice: iceZones.map(z => ({ x: z.x, z: z.z, r: z.r })),
  snow: snowZones.map(z => ({ x: z.x, z: z.z, r: z.r })),
- field: fieldSummary(c.field || currentField())
+ field: fieldSummary(c.field || currentField()),
+ theme: themeId()
  };
  }
  function commitCourtyard(layout, opts) {
@@ -3018,7 +3861,9 @@
  { id: 'shield_ram', name: 'Shield Ram', category: 'ram', shopOnly: true, shopPrice: 110, magSize: 3, drumEligible: false, damage: 80, fireRate: 0.9, auto: false, pellets: 1, spread: 0.006, reloadTime: 2.0, sound: 'heavy', color: 0x57534e, accent: 0xf59e0b, tool: 'ram' },
  { id: 'storm_rod', name: 'Storm Rod', category: 'rod', shopOnly: true, shopPrice: 150, magSize: 1, drumEligible: false, damage: 180, fireRate: 12, auto: false, pellets: 1, spread: 0, reloadTime: 12, sound: 'heavy', color: 0x1e3a8a, accent: 0xfef08a, tool: 'storm', noMag: true, noCasing: true },
  { id: 'well_bucket', name: 'Well Bucket', category: 'bucket', shopOnly: true, shopPrice: 60, magSize: 3, drumEligible: false, damage: 0, fireRate: 0.7, auto: false, pellets: 1, spread: 0.01, reloadTime: 1.1, sound: 'bow', color: 0x0ea5e9, accent: 0x7dd3fc, tool: 'bucket', noCasing: true },
- { id: 'tripwire_spool', name: 'Tripwire Spool', category: 'tripwire', shopOnly: true, shopPrice: 80, magSize: 3, drumEligible: false, damage: 90, fireRate: 0.35, auto: false, pellets: 1, spread: 0, reloadTime: 0.35, sound: 'bow', color: 0x78716c, accent: 0xfacc15, tool: 'tripwire', noCasing: true }
+ { id: 'tripwire_spool', name: 'Tripwire Spool', category: 'tripwire', shopOnly: true, shopPrice: 80, magSize: 3, drumEligible: false, damage: 90, fireRate: 0.35, auto: false, pellets: 1, spread: 0, reloadTime: 0.35, sound: 'bow', color: 0x78716c, accent: 0xfacc15, tool: 'tripwire', noCasing: true },
+ { id: 'ghost_lantern', name: 'Ghost Lantern', category: 'wisp', shopOnly: true, shopPrice: 100, magSize: 8, drumEligible: false, damage: 46, fireRate: 0.42, auto: false, pellets: 1, spread: 0.008, reloadTime: 1.35, sound: 'bow', color: 0x6d28d9, accent: 0xfb923c, tool: 'wisp', noCasing: true, theme: 'haunted' },
+ { id: 'candy_blaster', name: 'Candy Cane Blaster', category: 'cane', shopOnly: true, shopPrice: 105, magSize: 8, drumEligible: false, damage: 42, fireRate: 0.4, auto: false, pellets: 1, spread: 0.01, reloadTime: 1.4, sound: 'bow', color: 0xdc2626, accent: 0xf8fafc, tool: 'cane', noCasing: true, theme: 'christmas' }
  ];
 
  // Unified 3D Voxel Weapon Builder (used for BOTH first-person viewmodel AND 3D world gun drops!)
@@ -3161,6 +4006,19 @@
  addPart(g, 0, 0.02, -0.24, 0.1, 0.1, 0.78, metal);
  addPart(g, 0, 0.02, -0.66, 0.16, 0.16, 0.12, dark);
  addPart(g, 0, -0.08, 0.08, 0.06, 0.12, 0.1, grip);
+ } else if (def.category === 'cane') {
+ const stripe = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
+ addPart(g, 0, 0.04, -0.16, 0.07, 0.07, 0.62, metal);
+ addPart(g, 0, 0.04, -0.34, 0.075, 0.075, 0.12, stripe);
+ addPart(g, 0, 0.04, -0.08, 0.075, 0.075, 0.12, stripe);
+ addPart(g, 0, 0.16, -0.42, 0.16, 0.08, 0.16, stripe);
+ addPart(g, 0, -0.08, 0.1, 0.05, 0.12, 0.06, grip);
+ } else if (def.category === 'wisp') {
+ const glass = new THREE.MeshLambertMaterial({ color: 0xc4b5fd });
+ addPart(g, 0, 0.02, -0.1, 0.2, 0.22, 0.2, metal);
+ addPart(g, 0, 0.04, -0.1, 0.12, 0.12, 0.12, glass);
+ addPart(g, 0, 0.16, -0.1, 0.08, 0.06, 0.08, grip);
+ addPart(g, 0, -0.1, 0.04, 0.045, 0.14, 0.045, dark);
  } else {
  const isLong = def.category.includes('rifle') || def.category.includes('shotgun');
  addPart(g, 0, 0.02, -0.18, 0.075, 0.085, isLong ? 0.64 : 0.48, metal);
@@ -3556,7 +4414,7 @@
  const buffMult = state.buffs.speedBoost > 0 ? 1.42 : 1.0;
  const dashMult = state.dashTimer > 0 ? 1.65 : 1.0;
  const aimMult = state.scoped ? 0.52 : (state.ads ? 0.72 : 1.0);
- return 8.2 * lvlMult * buffMult * dashMult * aimMult;
+ return 8.2 * lvlMult * buffMult * dashMult * aimMult * chillMul(0);
  }
 
  function triggerDash() {
@@ -5964,7 +6822,34 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  golem: { name: 'Storm Siege Titan', hp: 2475, speed: 2.6, dmg: 51, gateDmg: 53, xp: 480, scale: 4.44, isBoss: true, throwsBoulders: true, throwsTrees: true, bodyCol: 0x5c3a21, headCol: 0x78350f, eyeCol: 0xf59e0b },
  warden: { name: 'Frost Bell Warden', hp: 1800, speed: 2.9, dmg: 28, gateDmg: 22, xp: 360, scale: 2.15, isBoss: true, bodyCol: 0xe2e8f0, headCol: 0xf8fafc, eyeCol: 0x38bdf8 },
  matron: { name: 'Sapper Matron', hp: 1600, speed: 3.2, dmg: 24, gateDmg: 53, xp: 340, scale: 1.85, isBoss: true, tntDecor: true, bodyCol: 0x7f1d1d, headCol: 0xb91c1c, eyeCol: 0xfef08a },
- shard: { name: 'Hoarfrost Shard', hp: 110, speed: 3.2, dmg: 18, gateDmg: 9, xp: 30, scale: 1.15, bodyCol: 0xe2e8f0, headCol: 0xf8fafc, eyeCol: 0x7dd3fc }
+ shard: { name: 'Hoarfrost Shard', hp: 110, speed: 3.2, dmg: 18, gateDmg: 9, xp: 30, scale: 1.15, bodyCol: 0xe2e8f0, headCol: 0xf8fafc, eyeCol: 0x7dd3fc },
+ wraith: { name: 'Grave Wraith', hp: 2400, speed: 3.4, dmg: 30, gateDmg: 18, xp: 460, scale: 3.35, isBoss: true, bodyCol: 0xc4b5fd, headCol: 0xf5f3ff, eyeCol: 0xfb923c },
+ santa: { name: 'Giant Santa', hp: 2600, speed: 3.1, dmg: 28, gateDmg: 16, xp: 480, scale: 3.5, isBoss: true, bodyCol: 0xdc2626, headCol: 0xf8fafc, eyeCol: 0xfacc15 },
+ krampus: { name: 'Giant Krampus', hp: 2300, speed: 3.6, dmg: 32, gateDmg: 18, xp: 440, scale: 3.25, isBoss: true, bodyCol: 0x292524, headCol: 0x44403c, eyeCol: 0xfacc15 }
+ };
+ const HAUNT_SKINS = {
+ stalker: { name: 'Grave Ghost', bodyCol: 0xc4b5fd, headCol: 0xf5f3ff, eyeCol: 0x67e8f9, ghost: true },
+ sprinter: { name: 'Bone Runner', bodyCol: 0xe7e5e4, headCol: 0xfafaf9, eyeCol: 0xfb923c, bone: true },
+ brute: { name: 'Grave Brute', bodyCol: 0xd6d3d1, headCol: 0xa8a29e, eyeCol: 0xfb923c, bone: true },
+ zigzag: { name: "Will-o'-Wisp", bodyCol: 0x7c3aed, headCol: 0xc4b5fd, eyeCol: 0xfb923c, ghost: true },
+ bomber: { name: 'Bone Sapper', bodyCol: 0xe7e5e4, headCol: 0xfafaf9, eyeCol: 0xf97316, bone: true },
+ shielder: { name: 'Crypt Shield', bodyCol: 0xd6d3d1, headCol: 0x78716c, eyeCol: 0x38bdf8, bone: true },
+ splitter: { name: 'Split Specter', bodyCol: 0xa78bfa, headCol: 0xe9d5ff, eyeCol: 0x67e8f9, ghost: true },
+ shadowling: { name: 'Wisp', bodyCol: 0x6d28d9, headCol: 0xc4b5fd, eyeCol: 0xfb923c, ghost: true },
+ splitling: { name: 'Wisp', bodyCol: 0x6d28d9, headCol: 0xc4b5fd, eyeCol: 0x67e8f9, ghost: true },
+ gargoyle: { name: 'Spectral Gargoyle', bodyCol: 0x4c1d95, headCol: 0xc4b5fd, eyeCol: 0x67e8f9, ghost: true }
+ };
+ const XMAS_SKINS = {
+ stalker: { name: 'Workshop Elf', bodyCol: 0x166534, headCol: 0xf8fafc, eyeCol: 0xdc2626, xmas: 'elf' },
+ sprinter: { name: 'Reindeer', bodyCol: 0x78350f, headCol: 0xf5deb3, eyeCol: 0x1c1917, xmas: 'deer' },
+ brute: { name: 'Snowman', bodyCol: 0xf8fafc, headCol: 0xe2e8f0, eyeCol: 0x111827, xmas: 'snow' },
+ zigzag: { name: 'Nutcracker', bodyCol: 0xdc2626, headCol: 0xfacc15, eyeCol: 0x111827, xmas: 'nut' },
+ bomber: { name: 'Peppermint Sapper', bodyCol: 0xdc2626, headCol: 0xf8fafc, eyeCol: 0x16a34a, xmas: 'nut' },
+ shielder: { name: 'Nutcracker Guard', bodyCol: 0x991b1b, headCol: 0xfacc15, eyeCol: 0x111827, xmas: 'nut' },
+ splitter: { name: 'Herd Reindeer', bodyCol: 0x92400e, headCol: 0xf5deb3, eyeCol: 0x1c1917, xmas: 'deer' },
+ shadowling: { name: 'Elf Scout', bodyCol: 0x15803d, headCol: 0xf8fafc, eyeCol: 0xdc2626, xmas: 'elf' },
+ splitling: { name: 'Fawn', bodyCol: 0xb45309, headCol: 0xfde68a, eyeCol: 0x1c1917, xmas: 'deer' },
+ gargoyle: { name: 'Red-Nose', bodyCol: 0x78350f, headCol: 0xf5deb3, eyeCol: 0xdc2626, xmas: 'rudolph' }
  };
 
  function createMonsterMesh(type, forceShield = false) {
@@ -6075,6 +6960,39 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  let blackMonsterCounter = 0;
 
+ function dressSanta(mesh, s) {
+ if (!mesh) return;
+ s = s || 1;
+ const white = new THREE.MeshLambertMaterial({ color: 0xf8fafc });
+ const sackMat = new THREE.MeshLambertMaterial({ color: 0x7f1d1d });
+ const beard = new THREE.Mesh(new THREE.BoxGeometry(0.46 * s, 0.42 * s, 0.2 * s), white);
+ beard.position.set(0, 1.58 * s, 0.3 * s);
+ const sack = new THREE.Mesh(new THREE.BoxGeometry(0.62 * s, 0.7 * s, 0.5 * s), sackMat);
+ sack.position.set(0.62 * s, 0.85 * s, -0.32 * s);
+ mesh.add(beard, sack);
+ }
+ function dressKrampus(mesh, s) {
+ if (!mesh) return;
+ s = s || 1;
+ const hats = mesh.userData.hatParts || [];
+ for (let i = 0; i < hats.length; i++) if (hats[i]) hats[i].visible = false;
+ const hornMat = new THREE.MeshLambertMaterial({ color: 0x1c1917 });
+ const hornL = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.62 * s, 0.14 * s), hornMat);
+ hornL.position.set(-0.2 * s, 2.4 * s, 0.02 * s);
+ hornL.rotation.z = 0.5;
+ const hornR = new THREE.Mesh(new THREE.BoxGeometry(0.14 * s, 0.62 * s, 0.14 * s), hornMat);
+ hornR.position.set(0.2 * s, 2.4 * s, 0.02 * s);
+ hornR.rotation.z = -0.5;
+ const chain = new THREE.Mesh(new THREE.BoxGeometry(0.95 * s, 0.1 * s, 0.1 * s), new THREE.MeshStandardMaterial({ color: 0x78716c, metalness: 0.65, roughness: 0.32 }));
+ chain.position.set(0, 1.15 * s, 0.34 * s);
+ const birch = new THREE.Mesh(new THREE.BoxGeometry(0.08 * s, 0.95 * s, 0.08 * s), new THREE.MeshLambertMaterial({ color: 0xf5f5f4 }));
+ birch.position.set(-0.72 * s, 1.25 * s, 0.16 * s);
+ birch.rotation.z = 0.45;
+ const sack = new THREE.Mesh(new THREE.BoxGeometry(0.55 * s, 0.6 * s, 0.46 * s), new THREE.MeshLambertMaterial({ color: 0x44403c }));
+ sack.position.set(0.55 * s, 0.82 * s, -0.28 * s);
+ mesh.add(hornL, hornR, chain, birch, sack);
+ }
+
  function spawnMonster(typeKey, customPos = null, opts) {
  const src = MONSTER_TYPES[typeKey];
  if (!src) return null;
@@ -6082,6 +7000,28 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (opts && opts.forceBoss) base.isBoss = true;
  if (opts && opts.name) base.name = opts.name;
  if (opts && opts.gateDmg != null) base.gateDmg = opts.gateDmg;
+ let hauntMode = '';
+ let xmasMode = '';
+ if (themeId() === 'haunted' && !base.isBoss && !(opts && opts.bossKind)) {
+ const skin = HAUNT_SKINS[typeKey];
+ if (skin) {
+ if (!(opts && opts.name)) base.name = skin.name;
+ base.bodyCol = skin.bodyCol;
+ base.headCol = skin.headCol;
+ base.eyeCol = skin.eyeCol;
+ hauntMode = skin.ghost ? 'ghost' : (skin.bone ? 'bone' : '');
+ }
+ }
+ if (themeId() === 'christmas' && !base.isBoss && !(opts && opts.bossKind)) {
+ const skin = XMAS_SKINS[typeKey];
+ if (skin) {
+ if (!(opts && opts.name)) base.name = skin.name;
+ base.bodyCol = skin.bodyCol;
+ base.headCol = skin.headCol;
+ base.eyeCol = skin.eyeCol;
+ xmasMode = skin.xmas || '';
+ }
+ }
  const diff = settings.difficulty;
  const waveMult = (1 + (state.wave - 1) * 0.16) * diff;
 
@@ -6102,6 +7042,21 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
 
  const mesh = createMonsterMesh(base, rollBigShield);
+ if (typeKey === 'santa') dressSanta(mesh, base.scale);
+ if (typeKey === 'krampus') dressKrampus(mesh, base.scale);
+ if (xmasMode === 'rudolph') {
+ const nose = new THREE.Mesh(new THREE.BoxGeometry(0.16 * base.scale, 0.16 * base.scale, 0.22 * base.scale), new THREE.MeshBasicMaterial({ color: 0xdc2626 }));
+ nose.position.set(0, 1.9 * base.scale, 0.42 * base.scale);
+ mesh.add(nose);
+ }
+ if (hauntMode === 'ghost') {
+ mesh.traverse(obj => {
+ if (!obj.isMesh || !obj.material || !obj.material.emissive) return;
+ if (obj.userData && obj.userData.isHead) return;
+ obj.material.emissive.setHex(base.bodyCol);
+ obj.material.emissiveIntensity = 0.42;
+ });
+ }
  if (opts && opts.meshScale) mesh.scale.setScalar(opts.meshScale / base.scale);
  if (opts && opts.tint != null) tintMonsterBody(mesh, opts.tint);
  if (customPos) {
@@ -6158,7 +7113,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  walkPhase: Math.random() * 6.28,
  zigPhase: Math.random() * 6.28,
  burnTimer: 0,
- burnTick: 0
+ burnTick: 0,
+ haunt: hauntMode,
+ xmas: xmasMode,
+ boneCd: hauntMode === 'bone' ? 0.35 : 0,
+ snowCd: xmasMode === 'snow' ? 0.4 : 0
  };
  if (typeKey === 'warden' || typeKey === 'matron') {
  if (!opts || opts.staged !== false) {
@@ -6170,7 +7129,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  m.bossKind = 'shard';
  if (!m.forceSilver) m.forceSilver = 7;
  }
- if (m.bossKind === 'matron' || m.bossKind === 'choir' || m.bossKind === 'angel') m.skipGateDespawn = true;
+ if (m.bossKind === 'matron' || m.bossKind === 'choir' || m.bossKind === 'angel' || m.bossKind === 'wraith' || typeKey === 'wraith' || m.bossKind === 'santa' || m.bossKind === 'krampus' || typeKey === 'santa' || typeKey === 'krampus') m.skipGateDespawn = true;
+ if (typeKey === 'wraith') {
+ if (!m.bossKind) m.bossKind = 'wraith';
+ m.staged = true;
+ mesh.position.y = getGroundHeight(mesh.position.x, mesh.position.z) + 1.7;
+ }
+ if (typeKey === 'santa' || typeKey === 'krampus') {
+ if (!m.bossKind) m.bossKind = typeKey;
+ m.staged = true;
+ mesh.position.y = getGroundHeight(mesh.position.x, mesh.position.z);
+ }
  mesh.traverse(obj => { if (obj.isMesh) obj.userData.monster = m; });
  monsters.push(m);
  return m;
@@ -6213,7 +7182,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (let i = 0; i < queue.length; i++) meta.push(null);
  let bossTag = '';
  const slot = state.wave % 20;
- if (state.wave % 5 === 0 && slot === 5) {
+ const hauntBoss = themeId() === 'haunted' && state.wave % 5 === 0;
+ const xmasBoss = themeId() === 'christmas' && state.wave % 5 === 0;
+ if (xmasBoss) {
+ queue.push('santa');
+ meta.push({ bossKind: 'santa', staged: true, hpMul: 1 });
+ bossTag = ' — GIANT SANTA — THE SLEIGH ARRIVES';
+ } else if (hauntBoss) {
+ queue.push('wraith');
+ meta.push({ bossKind: 'wraith', staged: true, hpMul: 1 });
+ bossTag = ' — GRAVE WRAITH — THE FOREST WAKES';
+ } else if (state.wave % 5 === 0 && slot === 5) {
  const bosses = Math.max(1, Math.floor(state.wave / 5));
  for (let b = 0; b < bosses; b++) {
  queue.push('golem');
@@ -6262,14 +7241,23 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  function spawnCoinDrop(pos, isGold, valueSilver) {
  const g = new THREE.Group();
- const col = isGold ? 0xfacc15 : 0xcbd5e1;
+ const haunt = themeId() === 'haunted';
+ const xmas = themeId() === 'christmas';
+ const col = haunt ? (isGold ? 0xfb923c : 0xc4b5fd) : (xmas ? (isGold ? 0xfacc15 : 0xdc2626) : (isGold ? 0xfacc15 : 0xcbd5e1));
  const coin = new THREE.Mesh(
  new THREE.CylinderGeometry(0.32, 0.32, 0.10, 12),
  new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.35, metalness: 0.75, roughness: 0.25 })
  );
  coin.rotation.x = Math.PI / 2;
  g.add(coin);
- const lbl = createFloatingLabelSprite(isGold ? `+${Math.round(valueSilver / 10)} GOLD` : `+${valueSilver} SILVER`, isGold ? 'rgba(180,83,9,0.92)' : 'rgba(71,85,105,0.9)', isGold ? '#fef08a' : '#f8fafc');
+ const coinText = haunt
+ ? (isGold ? `+${Math.round(valueSilver / 10)} SOUL` : `+${valueSilver} ECTO`)
+ : (xmas
+ ? (isGold ? `+${Math.round(valueSilver / 10)} GOLD` : `+${valueSilver} HOLLY`)
+ : (isGold ? `+${Math.round(valueSilver / 10)} GOLD` : `+${valueSilver} SILVER`));
+ const coinBg = haunt ? (isGold ? 'rgba(154,52,18,0.92)' : 'rgba(76,29,149,0.92)') : (xmas ? (isGold ? 'rgba(120,53,15,0.92)' : 'rgba(127,29,29,0.92)') : (isGold ? 'rgba(180,83,9,0.92)' : 'rgba(71,85,105,0.9)'));
+ const coinFg = haunt ? (isGold ? '#ffedd5' : '#ede9fe') : (xmas ? '#fef9c3' : (isGold ? '#fef08a' : '#f8fafc'));
+ const lbl = createFloatingLabelSprite(coinText, coinBg, coinFg);
  lbl.scale.set(0.95, 0.25, 1);
  lbl.position.y = 0.62;
  g.add(lbl);
@@ -7044,6 +8032,16 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), new THREE.MeshBasicMaterial({ color: 0xfef08a }));
  const core = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.9), new THREE.MeshBasicMaterial({ color: 0xfef9c3 }));
  g.add(orb, core);
+ } else if (kind === 'wisp') {
+ const orb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), new THREE.MeshBasicMaterial({ color: 0xc4b5fd }));
+ const core = new THREE.Mesh(new THREE.SphereGeometry(0.14, 6, 5), new THREE.MeshBasicMaterial({ color: 0xfb923c }));
+ g.add(orb, core);
+ } else if (kind === 'ornament') {
+ const ball = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), new THREE.MeshBasicMaterial({ color: 0xdc2626 }));
+ const band = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.62, 0.62), new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
+ const cap = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.14), new THREE.MeshBasicMaterial({ color: 0xf8fafc }));
+ cap.position.y = 0.32;
+ g.add(ball, band, cap);
  } else {
  const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.78), new THREE.MeshBasicMaterial({ color: 0xe7e5e4 }));
  const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.24), new THREE.MeshBasicMaterial({ color: 0xf8fafc }));
@@ -7073,6 +8071,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  dmg: spec.dmg || 0,
  baseDmg: spec.baseDmg || spec.dmg || 0,
  hitRadius: spec.hitRadius || 1.5,
+ homing: !!spec.homing,
  spent: false
  });
  return mesh;
@@ -7139,6 +8138,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (y <= gy + 0.16) return new THREE.Vector3(x, gy + 0.14, z);
  }
  return null;
+ }
+ function slowMonster(m, seconds, mult) {
+ if (!m || m.hp <= 0) return;
+ m.slowTimer = Math.max(m.slowTimer || 0, seconds || 1.6);
+ m.slowMult = Math.min(m.slowMult == null ? 1 : m.slowMult, mult == null ? 0.45 : mult);
  }
  function freezeMonster(m) {
  if (!m || m.hp <= 0) return;
@@ -7272,10 +8276,63 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const x = monster && monster.mesh ? monster.mesh.position.x : point.x;
  const z = monster && monster.mesh ? monster.mesh.position.z : point.z;
  detonateStormAt(x, z, owner);
+ } else if (p.effect === 'wisp') {
+ if (monster) damageMonster(monster, p.dmg || 46, point, false, owner);
+ } else if (p.effect === 'ornament') {
+ const x = monster && monster.mesh ? monster.mesh.position.x : point.x;
+ const z = monster && monster.mesh ? monster.mesh.position.z : point.z;
+ const y = monster && monster.mesh ? monster.mesh.position.y : point.y;
+ if (monster) {
+ damageMonster(monster, p.dmg || 42, point, false, owner);
+ if (monster.hp > 0) slowMonster(monster, 1.7, 0.45);
  }
+ const list = monsters.slice();
+ for (let i = 0; i < list.length; i++) {
+ const other = list[i];
+ if (!other || other === monster || other.hp <= 0 || !other.mesh) continue;
+ if (Math.hypot(other.mesh.position.x - x, other.mesh.position.z - z) > 2.6) continue;
+ damageMonster(other, Math.round((p.dmg || 42) * 0.45), other.mesh.position.clone(), false, owner);
+ if (other.hp > 0) slowMonster(other, 1.4, 0.5);
+ }
+ cappedVoxelBurst(new THREE.Vector3(x, y + 0.4, z), 0xdc2626, 8, 4.2);
+ cappedVoxelBurst(new THREE.Vector3(x, y + 0.6, z), 0xfacc15, 6, 3.2);
+ }
+ }
+ function steerWisp(p, dt) {
+ let bestD = 1e12;
+ let found = false;
+ const px = p.mesh.position.x;
+ const py = p.mesh.position.y;
+ const pz = p.mesh.position.z;
+ for (let i = 0; i < monsters.length; i++) {
+ const m = monsters[i];
+ if (!m || m.hp <= 0 || !m.mesh) continue;
+ const dx = m.mesh.position.x - px;
+ const dy = m.mesh.position.y - py;
+ const dz = m.mesh.position.z - pz;
+ const d = dx * dx + dy * dy + dz * dz;
+ if (d < bestD) {
+ bestD = d;
+ found = true;
+ wispAim.set(dx, dy, dz);
+ }
+ }
+ if (!found || bestD < 0.04) return;
+ const speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y + p.vel.z * p.vel.z) || 72;
+ wispAim.normalize();
+ const blend = Math.min(1, dt * 8);
+ p.vel.x += (wispAim.x * speed - p.vel.x) * blend;
+ p.vel.y += (wispAim.y * speed - p.vel.y) * blend;
+ p.vel.z += (wispAim.z * speed - p.vel.z) * blend;
+ const mag = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y + p.vel.z * p.vel.z) || 1;
+ const scale = speed / mag;
+ p.vel.x *= scale;
+ p.vel.y *= scale;
+ p.vel.z *= scale;
  }
  function advanceTravelShot(p, dt) {
  if (!p || !p.mesh) return true;
+ if (p.homing && !p.spent) steerWisp(p, dt);
  if (p.spent) {
  p.fuse -= dt;
  return p.fuse <= 0;
@@ -7287,6 +8344,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (p.type === 'round') return p.fuse <= 0;
  const next = p.mesh.position.clone();
  const hit = sweepBoltMonster(prev, next, p.hitRadius || 1.5);
+ const nearGift = !hit ? giftNear(next, 0.95) : null;
+ if (nearGift) {
+ breakGift(nearGift, p.dmg || 20);
+ p.mesh.position.set(nearGift.x, nearGift.y, nearGift.z);
+ p.spent = true;
+ p.vel.set(0, 0, 0);
+ p.fuse = 0.2;
+ return false;
+ }
  if (hit) {
  p.mesh.position.copy(hit.point);
  resolveTravelHit(p, hit.monster, hit.point);
@@ -7299,7 +8365,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (!ground && p.fuse > 0) return false;
  if (ground) p.mesh.position.copy(ground);
  const point = p.mesh.position.clone();
- if (p.effect === 'ember' || p.effect === 'storm') resolveTravelHit(p, null, point);
+ if (p.effect === 'ember' || p.effect === 'storm' || p.effect === 'ornament') resolveTravelHit(p, null, point);
  p.spent = true;
  p.vel.set(0, 0, 0);
  p.fuse = 0.35;
@@ -7878,6 +8944,20 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  else if (tool === 'ram') fireRam(index, w);
  else if (tool === 'bucket') lobTool(index, 'bucket');
  else if (tool === 'tripwire') plantTripwire(index, spent);
+ else if (tool === 'wisp') fireWisp(index, w);
+ else if (tool === 'cane') fireCane(index, w);
+ }
+ function fireCane(index, w) {
+ const def = w && w.def;
+ const dmg = Math.round(((def && def.damage) || 42) * dmgMultOf(w, index));
+ launchBolt(index, { kind: 'ornament', effect: 'ornament', speed: 86, fuse: 2.6, dmg: dmg, hitRadius: 1.7 });
+ playTone(620, 280, 0.07, 0.08, 'triangle');
+ }
+ function fireWisp(index, w) {
+ const def = w && w.def;
+ const dmg = Math.round(((def && def.damage) || 46) * dmgMultOf(w, index));
+ launchBolt(index, { kind: 'wisp', effect: 'wisp', speed: 72, fuse: 3.2, dmg: dmg, hitRadius: 1.65, homing: true });
+ playTone(480, 220, 0.07, 0.08, 'triangle');
  }
  function clearCastleGadgets() {
  clearPlacedMines();
@@ -8292,6 +9372,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (const hit of hits) {
  const ud0 = hit.object.userData || {};
  const pelletDmg = Math.round(w.def.damage * dmgMult);
+ if (ud0.gift && ud0.gift.hp > 0) { breakGift(ud0.gift, pelletDmg); endPt = hit.point; break; }
  if (ud0.spear && ud0.spear.hp > 0) { damageSpear(ud0.spear, pelletDmg, hit.point); endPt = hit.point; break; }
  if (ud0.fuseCrate && ud0.fuseCrate.hp > 0) { damageCrate(ud0.fuseCrate, pelletDmg, hit.point); endPt = hit.point; break; }
  const bObj = hit.object.userData.boulder;
@@ -8562,6 +9643,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (let i = 0; i < enemyTrees.length; i++) if ((enemyTrees[i].hp || 0) > 0) roots.push(enemyTrees[i].mesh);
  for (let i = 0; i < fuseCrates.length; i++) roots.push(fuseCrates[i].mesh);
  for (let i = 0; i < monsters.length; i++) roots.push(monsters[i].mesh);
+ for (let i = 0; i < themeGifts.length; i++) if (themeGifts[i].hp > 0 && themeGifts[i].mesh) roots.push(themeGifts[i].mesh);
  for (let i = 0; i < roots.length; i++) syncShotRoot(roots[i]);
  return roots;
  }
@@ -8612,6 +9694,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  function consumeShotProp(hit, dmg) {
  const ud = hit.object.userData || {};
+ if (ud.gift && ud.gift.hp > 0) { breakGift(ud.gift, dmg); return true; }
  if (ud.spear && ud.spear.hp > 0) { damageSpear(ud.spear, dmg, hit.point); return true; }
  if (ud.fuseCrate && ud.fuseCrate.hp > 0) { damageCrate(ud.fuseCrate, dmg, hit.point); return true; }
  if (ud.boulder && ud.boulder.hp > 0) { damageBoulder(ud.boulder, dmg, hit.point); return true; }
@@ -8989,7 +10072,12 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const from = m.mesh.position.clone().add(new THREE.Vector3(0, 1.8, 0));
  const aim = threat.pos.clone();
  aim.y += 0.4;
- launchBossBolt(from, aim, Math.max(8, Math.round((m.base.dmg || 16) * 0.55 * settings.difficulty)), m.bossKind === 'warden' || m.bossKind === 'shard' ? 0x7dd3fc : 0xf97316);
+ let boltColor = 0xf97316;
+ if (m.bossKind === 'warden' || m.bossKind === 'shard') boltColor = 0x7dd3fc;
+ else if (m.bossKind === 'wraith') boltColor = 0xc4b5fd;
+ else if (m.bossKind === 'santa') boltColor = 0xdc2626;
+ else if (m.bossKind === 'krampus') boltColor = 0x1c1917;
+ launchBossBolt(from, aim, Math.max(8, Math.round((m.base.dmg || 16) * 0.55 * settings.difficulty)), boltColor);
  m.volleyCd = 1.55;
  }
  function pullOutOfCastle(m, dt) {
@@ -9627,9 +10715,71 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  return 'steer';
  }
+ function updateWraith(m, dt) {
+ const pos = m.mesh.position;
+ const threat = pickThreat(pos);
+ const meadow = currentField();
+ const env = playableEnvelope();
+ let tx = threat.pos.x;
+ let tz = threat.pos.z;
+ if (tz > -6) tz = -6;
+ if (tz < meadow.zSouth + 2) tz = meadow.zSouth + 2;
+ tx = Math.max(env.minX + 2, Math.min(env.maxX - 2, tx));
+ tz = Math.max(meadow.zSouth + 2, Math.min(-4, tz));
+ bossMoveToward(m, tx, tz, m.speed, dt);
+ if (pos.z > -4) pos.z = -4;
+ if (pos.z < meadow.zSouth + 2) pos.z = meadow.zSouth + 2;
+ if (pos.x < env.minX + 1.5) pos.x = env.minX + 1.5;
+ if (pos.x > env.maxX - 1.5) pos.x = env.maxX - 1.5;
+ m.walkPhase = (m.walkPhase || 0) + dt * 2.2;
+ pos.y = getGroundHeight(pos.x, pos.z) + 1.65 + Math.sin(m.walkPhase) * 0.28;
+ m.mesh.rotation.y = Math.atan2(threat.pos.x - pos.x, threat.pos.z - pos.z);
+ m.wraithCd = (m.wraithCd == null ? 0.35 : m.wraithCd) - dt;
+ if (m.wraithCd <= 0) {
+ const from = pos.clone();
+ from.y += 2.1;
+ const aim = new THREE.Vector3(threat.pos.x, threat.pos.y + 0.45, threat.pos.z);
+ launchBossBolt(from, aim, Math.max(10, Math.round((m.base.dmg || 30) * 0.45 * settings.difficulty)), 0xc4b5fd);
+ m.wraithCd = 1.25;
+ }
+ return 'steer';
+ }
+ function steerYuleBoss(m, dt, boltColor) {
+ const pos = m.mesh.position;
+ const threat = pickThreat(pos);
+ const meadow = currentField();
+ const env = playableEnvelope();
+ let tx = threat.pos.x;
+ let tz = threat.pos.z;
+ if (tz > -6) tz = -6;
+ if (tz < meadow.zSouth + 2) tz = meadow.zSouth + 2;
+ tx = Math.max(env.minX + 2, Math.min(env.maxX - 2, tx));
+ tz = Math.max(meadow.zSouth + 2, Math.min(-4, tz));
+ bossMoveToward(m, tx, tz, m.speed, dt);
+ if (pos.z > -4) pos.z = -4;
+ if (pos.z < meadow.zSouth + 2) pos.z = meadow.zSouth + 2;
+ if (pos.x < env.minX + 1.5) pos.x = env.minX + 1.5;
+ if (pos.x > env.maxX - 1.5) pos.x = env.maxX - 1.5;
+ pos.y = getGroundHeight(pos.x, pos.z);
+ m.mesh.rotation.y = Math.atan2(threat.pos.x - pos.x, threat.pos.z - pos.z);
+ m.bossCd = (m.bossCd == null ? 0.35 : m.bossCd) - dt;
+ if (m.bossCd <= 0) {
+ const from = pos.clone();
+ from.y += 2.4;
+ const aim = new THREE.Vector3(threat.pos.x, threat.pos.y + 0.45, threat.pos.z);
+ launchBossBolt(from, aim, Math.max(10, Math.round((m.base.dmg || 28) * 0.45 * settings.difficulty)), boltColor);
+ m.bossCd = 1.15;
+ }
+ return 'steer';
+ }
+ function updateSanta(m, dt) { return steerYuleBoss(m, dt, 0xdc2626); }
+ function updateKrampus(m, dt) { return steerYuleBoss(m, dt, 0x1c1917); }
  function updateBossMonster(m, dt) {
  if (!m || !m.mesh || !m.mesh.parent) return 'removed';
  if (m.bossKind === 'shard' || m.bossGuard) return 'walk';
+ if (m.bossKind === 'wraith') return updateWraith(m, dt);
+ if (m.bossKind === 'santa') return updateSanta(m, dt);
+ if (m.bossKind === 'krampus') return updateKrampus(m, dt);
  if (m.stunTimer > 0 && m.bossKind !== 'choir' && m.bossKind !== 'angel' && m.bossKind !== 'matron') {
  m.stunTimer -= dt;
  m.pose = 'kneel';
@@ -9660,6 +10810,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (kind === 'matron') return phase === 2 ? 'REAR CRYSTAL' : (phase === 3 ? 'RAMP RUSH' : 'FUSE CRATES');
  if (kind === 'choir') return phase === 2 ? 'TOWER PERCH' : 'DIVES';
  if (kind === 'angel') return 'THE ANGEL';
+ if (kind === 'wraith') return 'SOUL VOLLEY';
+ if (kind === 'santa') return 'SACK VOLLEY';
+ if (kind === 'krampus') return 'COAL AND CHAINS';
  return '';
  }
  function bossTitleFor(kind) {
@@ -9668,6 +10821,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (kind === 'matron') return 'SAPPER MATRON';
  if (kind === 'choir') return 'GARGOYLE CHOIR';
  if (kind === 'angel') return 'THE ANGEL';
+ if (kind === 'wraith') return 'GRAVE WRAITH';
+ if (kind === 'santa') return 'GIANT SANTA';
+ if (kind === 'krampus') return 'GIANT KRAMPUS';
  return '';
  }
  function bossHudModel() {
@@ -9905,8 +11061,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (!other) m.dropBossGold = true;
  }
  const deathPos = m.mesh.position.clone();
+ const wasSanta = m.bossKind === 'santa' || m.typeKey === 'santa';
  clearMonsterFx(m);
  spawnVoxelBurst(deathPos.clone().add(new THREE.Vector3(0, 1.1, 0)), m.base.bodyCol, 16, 6.2);
+ if (themeId() === 'haunted' || m.haunt) spawnVoxelBurst(deathPos.clone().add(new THREE.Vector3(0, 1.55, 0)), 0xc4b5fd, 8, 4.4);
+ else if (themeId() === 'christmas' || m.xmas) spawnVoxelBurst(deathPos.clone().add(new THREE.Vector3(0, 1.55, 0)), 0xfacc15, 8, 4.4);
  maybeSpawnDrop(deathPos, m);
  scene.remove(m.mesh);
  const idx = monsters.indexOf(m);
@@ -9929,6 +11088,19 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.kills++;
  grantXP(m.base.xp);
  updateHUD();
+ if (wasSanta) {
+ let livingKrampus = false;
+ for (let k = 0; k < monsters.length; k++) {
+ const o = monsters[k];
+ if (o !== m && o.hp > 0 && (o.typeKey === 'krampus' || o.bossKind === 'krampus')) livingKrampus = true;
+ }
+ if (!livingKrampus) {
+ const kp = deathPos.clone();
+ kp.y = 0;
+ spawnMonster('krampus', kp);
+ showBanner('KRAMPUS FOLLOWS — COAL AND CHAINS', '#facc15');
+ }
+ }
  }
  if (m.bossKind === 'choir' && !angelSpawned && shouldFoldChoir()) foldChoir();
  }
@@ -10308,6 +11480,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  pollGamepadsOnce();
  const dt = forcedDt || Math.min(0.05, clock.getDelta());
  simTime += dt;
+ tickPlayerChill(dt);
  updateCastleSystems(dt, !!debugFastStep);
  if (debugFastStep) {
  updateMenuGamepadNav(dt);
@@ -10366,6 +11539,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const fl = bridgeFestiveLights[i];
  fl.light.intensity = fl.base + Math.sin(twT * 2.6 + fl.phase) * 0.45;
  }
+ updateThemeFx(dt);
 
  shrineCrystal.rotation.y += dt * 1.8;
  shrineCrystal.position.y = 5.3 + Math.sin(clock.elapsedTime * 3) * 0.22;
@@ -10396,9 +11570,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  tickStormRing(dt);
  } else {
- scene.background.lerp(new THREE.Color(0x9bc4e2), Math.min(1, dt * 3.0));
+ const themeNow = themeId();
+ const haunt = themeNow === 'haunted';
+ const xmas = themeNow === 'christmas';
+ scene.background.lerp(haunt ? themeHauntedBg : (xmas ? themeChristmasBg : themeClassicBg), Math.min(1, dt * 3.0));
  scene.fog.color.copy(scene.background);
- sunLight.intensity += (1.05 - sunLight.intensity) * Math.min(1, dt * 3.0);
+ if (scene.fog) scene.fog.density = haunt ? 0.014 : (xmas ? 0.011 : 0.0085);
+ sunLight.color.copy(haunt ? themeHauntedSun : (xmas ? themeChristmasSun : themeClassicSun));
+ const sunTarget = haunt ? 0.34 : (xmas ? 0.78 : 1.05);
+ sunLight.intensity += (sunTarget - sunLight.intensity) * Math.min(1, dt * 3.0);
  if (stormFlashLight) stormFlashLight.intensity = 0;
  if (stormRing) { dropMesh(stormRing.mesh); stormRing = null; }
  }
@@ -10891,6 +12071,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const amp = pos.z < -23.5 ? 7.8 : 3.2;
  moveX += Math.cos(m.zigPhase) * amp * moveScale;
  }
+ if (m.xmas === 'elf' || m.xmas === 'deer' || m.xmas === 'nut') {
+ const pd = Math.hypot(player.pos.x - pos.x, player.pos.z - pos.z);
+ const reach = m.xmas === 'deer' ? 18 : (m.xmas === 'nut' ? 8 : 10);
+ if (pd < reach) {
+ const burst = m.xmas === 'elf' ? 1.35 : (m.xmas === 'deer' ? 1.85 : 1.55);
+ moveX *= burst;
+ moveZ *= burst;
+ }
+ }
  const tryX = pos.x + moveX * dt;
  const tryZ = pos.z + moveZ * dt;
  const moved = avoidFieldWater(pos, tryX, tryZ, m.speed, dt);
@@ -10907,6 +12096,20 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  const rootBob = Math.abs(Math.sin(m.walkPhase)) * 0.14 * m.base.scale;
  pos.y = getGroundHeight(pos.x, pos.z) + rootBob;
+ if (m.xmas === 'elf') pos.y += Math.max(0, Math.sin(m.walkPhase * 1.6)) * 0.42;
+ if (m.haunt === 'ghost') {
+ pos.y = getGroundHeight(pos.x, pos.z) + 0.95 + Math.sin(m.walkPhase * 1.35) * 0.32;
+ const blink = Math.sin(m.walkPhase * 0.33);
+ if (blink > 0.9) {
+ const nx = pos.x + (dx / dist) * 1.1;
+ const nz = pos.z + (dz / dist) * 1.1;
+ if (!fieldWaterAt(nx, nz)) {
+ pos.x = nx;
+ pos.z = nz;
+ pos.y = getGroundHeight(pos.x, pos.z) + 0.95 + Math.sin(m.walkPhase * 1.35) * 0.32;
+ }
+ }
+ }
  m.mesh.rotation.y = Math.atan2(dx, dz);
  m.mesh.rotation.z = Math.sin(m.walkPhase) * 0.065; // grounded weight shift
  m.mesh.rotation.x = 0.07 + Math.abs(Math.cos(m.walkPhase)) * 0.06; // forward drive lean
@@ -10925,6 +12128,20 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  keepBossAndFlyerHonest(m, dt);
  checkWiresCrossed(m, prevX, prevZ);
+ if (m.haunt === 'bone' && m.hp > 0 && m.mesh && m.mesh.parent) {
+ m.boneCd = (m.boneCd == null ? 0.35 : m.boneCd) - dt;
+ if (m.boneCd <= 0) {
+ m.boneCd = 1.15 + ((m.walkPhase || 0) % 1) * 0.55;
+ launchBoneShot(m);
+ }
+ }
+ if (m.xmas === 'snow' && m.hp > 0 && m.mesh && m.mesh.parent) {
+ m.snowCd = (m.snowCd == null ? 0.4 : m.snowCd) - dt;
+ if (m.snowCd <= 0) {
+ m.snowCd = 1.35;
+ launchSnowball(m);
+ }
+ }
 
  // Boss Boulder & Fast Spear-Tree attacks!
  if (!m.staged && m.base.throwsBoulders && pos.z > currentField().zSouth + 1 && pos.z < 2) {
@@ -11023,6 +12240,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
+ updateBoneShots(dt);
+ updateSnowballs(dt);
  updateBossBolts(dt);
 
  // UPDATE BOSS BOULDERS (any boulder hitting the ground explodes!)
@@ -11241,6 +12460,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  reserve: w.reserve
  })),
  courtyardSeed: (courtyard && courtyard.code) ? courtyard.code : '',
+ theme: themeId(),
  savedAt: Date.now()
  };
  }
@@ -11363,6 +12583,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.intermissionTimer = 120;
  }
  hasStartedRun = true;
+ if (typeof data.theme === 'string' && data.theme) activeTheme = themeKey(data.theme);
  const savedCode = normalizeSeed(data.courtyardSeed || '');
  if (savedCode) {
  commitCourtyard(generateLayout(savedCode, []), { force: true });
@@ -12108,6 +13329,44 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const c = document.createElement('canvas');
  c.width = 96; c.height = 64;
  const ctx = c.getContext('2d');
+ if (def.category === 'wisp') {
+ ctx.fillStyle = '#12081f';
+ ctx.fillRect(0, 0, 96, 64);
+ ctx.fillStyle = cssHexColor(def.color == null ? 0x6d28d9 : def.color);
+ ctx.beginPath();
+ ctx.arc(48, 28, 16, 0, Math.PI * 2);
+ ctx.fill();
+ ctx.fillStyle = cssHexColor(def.accent == null ? 0xfb923c : def.accent);
+ ctx.beginPath();
+ ctx.arc(48, 28, 7, 0, Math.PI * 2);
+ ctx.fill();
+ ctx.fillStyle = '#e7e5e4';
+ ctx.fillRect(45, 44, 6, 14);
+ const lanternUrl = c.toDataURL('image/png');
+ weaponIconCache.set(key, lanternUrl);
+ return lanternUrl;
+ }
+ if (def.category === 'cane') {
+ ctx.fillStyle = '#14532d';
+ ctx.fillRect(0, 0, 96, 64);
+ ctx.strokeStyle = '#dc2626';
+ ctx.lineWidth = 8;
+ ctx.beginPath();
+ ctx.moveTo(28, 50);
+ ctx.lineTo(28, 18);
+ ctx.quadraticCurveTo(28, 8, 42, 8);
+ ctx.lineTo(54, 8);
+ ctx.stroke();
+ ctx.strokeStyle = '#f8fafc';
+ ctx.lineWidth = 3;
+ ctx.beginPath();
+ ctx.moveTo(28, 40);
+ ctx.lineTo(28, 28);
+ ctx.stroke();
+ const caneUrl = c.toDataURL('image/png');
+ weaponIconCache.set(key, caneUrl);
+ return caneUrl;
+ }
  ctx.fillStyle = '#0b1220';
  ctx.fillRect(0, 0, 96, 64);
  ctx.fillStyle = cssHexColor(def.color == null ? 0x94a3b8 : def.color);
@@ -12195,6 +13454,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (tab === 'weapons') {
  state.weapons.forEach((wp, idx) => {
  if (!wp.def.shopOnly) return;
+ if (wp.def.theme && wp.def.theme !== themeId()) return;
  addItem(
  wp.def.name,
  wp.unlocked ? 'Owned — Click to Equip' : `Unlock ${wp.def.name} permanently`,
@@ -13114,7 +14374,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ep.onGround = true;
  mDir.set(0, 0, 0);
  } else {
- const spd = 8.2 * (1 + (state.level - 1) * 0.045) * (ep.dashTimer > 0 ? 1.55 : 1.0) * ((ep.buffs && ep.buffs.speedBoost > 0) ? 1.42 : 1.0);
+ const spd = 8.2 * (1 + (state.level - 1) * 0.045) * (ep.dashTimer > 0 ? 1.55 : 1.0) * ((ep.buffs && ep.buffs.speedBoost > 0) ? 1.42 : 1.0) * chillMul(ep.index);
  const hv = horizontalVelocity(ep, mDir.x, mDir.z, spd, dt);
  const nx = ep.pos.x + hv.x * dt;
  const nz = ep.pos.z + hv.z * dt;
@@ -13671,6 +14931,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  projectiles.splice(i, 1);
  }
+ clearBoneShots();
+ clearSnowballs();
  return projectiles.length;
  },
  clearFireZones() {
@@ -13735,6 +14997,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  state.toSpawn = [];
  state.spawnMeta = [];
+ clearBoneShots();
+ clearSnowballs();
  clearBossCombat();
  for (let i = stuckThermites.length - 1; i >= 0; i--) {
  scene.remove(stuckThermites[i].mesh);
@@ -13747,6 +15011,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return { x: m.mesh.position.x, y: m.mesh.position.y, z: m.mesh.position.z, hp: m.hp };
  },
  courtyardInfo() { return courtyardInfo(); },
+ setTheme(id) { return setTheme(id); },
+ themeInfo() { return themeInfo(); },
+ openShop(index) { openShop(index || 0); return true; },
  terrainInfo() { return terrainInfo(); },
  fieldInfo() { return fieldSummary(currentField()); },
  previewField(code) {
@@ -13908,8 +15175,16 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  boss: !!(m.base && m.base.isBoss),
  flying: !!(m.base && m.base.flying),
  debug: !!m.debugTarget,
- speed: m.speed
+ speed: m.speed,
+ haunt: m.haunt || '',
+ xmas: m.xmas || '',
+ skip: !!m.skipGateDespawn,
+ type: m.typeKey || '',
+ bossKind: m.bossKind || ''
  }));
+ },
+ playerPace() {
+ return { chill: playerChill.slice(), p1: getPlayerSpeed() };
  },
  setAimPoint(x, z) { forcedAimPoint = { x: x, z: z }; return forcedAimPoint; },
  clearAimPoint() { forcedAimPoint = null; },
@@ -14188,7 +15463,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  spawnMonster('golem', pos, null);
  } else if (kind === 'warden' || kind === 'matron' || kind === 'shard') {
  spawnMonster(kind, pos, o);
- } else spawnMonster(kind, pos, o);
+ } else {
+ const spec = MONSTER_TYPES[kind];
+ if (spec && spec.isBoss) {
+ if (!o.bossKind) o.bossKind = kind;
+ if (opts.staged !== false) o.staged = true;
+ }
+ spawnMonster(kind, pos, o);
+ if (kind === 'wraith') showBanner('GRAVE WRAITH — THE FOREST WAKES', '#c4b5fd');
+ if (kind === 'santa') showBanner('— GIANT SANTA — THE SLEIGH ARRIVES', '#dc2626');
+ if (kind === 'krampus') showBanner('KRAMPUS FOLLOWS — COAL AND CHAINS', '#facc15');
+ }
  paintBossHud();
  return this.bossReport();
  },
