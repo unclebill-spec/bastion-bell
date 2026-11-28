@@ -246,6 +246,8 @@
  font-size: 13px; font-weight: 900; color: #fde047; display: flex; justify-content: space-between;
  }
  #shop-screen { display: none; z-index: 35; }
+ #gift-screen { display: none; z-index: 36; }
+ #pause-screen { display: none; z-index: 32; }
  .shop-card {
  max-width: 820px; width: 96%; max-height: 86vh; display: flex; flex-direction: column;
  background: rgba(15, 23, 42, 0.96); border: 1px solid rgba(251, 191, 36, 0.4);
@@ -428,6 +430,7 @@
  }
  .bind-btn:hover { background: rgba(255,255,255,0.22); }
  .bind-btn.listening { background: #f59e0b; color: #0f172a; border-color: #fef08a; }
+ .bind-player-btn.active { background: linear-gradient(135deg, #f59e0b, #d97706); color: #0f172a; border-color: #fde68a; }
 
  #gameover-screen { display: none; z-index: 40; }
  .player-select-row {
@@ -542,6 +545,7 @@
  <div class="menu-card">
  <h1>BASTION BELL</h1>
  <div class="subtitle">3D High-Count Voxel Castle Defense — Menu Controller Nav, P1–P4 Parity, Boss +50%, Snow -50% &amp; Anti-Fall Warp (v27)</div>
+ <div id="start-high-score" class="subtitle">High score: no high score yet</div>
  <div class="info-grid">
  <div class="info-box">
  <strong>🏔️ Island Fortress &amp; Bell</strong>
@@ -610,6 +614,7 @@
  <span class="key">2</span> ADS / Scope Zoom &nbsp;|&nbsp;
  <span class="key">0</span> Deploy / Mount Dual .50 Cal &nbsp;|&nbsp;
  <span class="key">MMB</span> / <span class="key">Scroll</span> Cycle &nbsp;|&nbsp;
+ <span class="key">P</span> Pause &nbsp;|&nbsp;
  <span class="key">ESC</span> Pause
  </div>
  </div>
@@ -706,10 +711,19 @@
  </div>
 
  <div class="opt-section-title">Remap Controls (Click to Rebind)</div>
+ <div id="bind-player-row" class="player-select-row">
+ <span class="player-select-label">Player</span>
+ <button id="bind-player-0" class="btn btn-sec bind-player-btn" type="button" data-bind-player="0" style="padding:7px 14px; font-size:12.5px;">P1</button>
+ <button id="bind-player-1" class="btn btn-sec bind-player-btn" type="button" data-bind-player="1" style="padding:7px 14px; font-size:12.5px;">P2</button>
+ <button id="bind-player-2" class="btn btn-sec bind-player-btn" type="button" data-bind-player="2" style="padding:7px 14px; font-size:12.5px;">P3</button>
+ <button id="bind-player-3" class="btn btn-sec bind-player-btn" type="button" data-bind-player="3" style="padding:7px 14px; font-size:12.5px;">P4</button>
+ </div>
+ <div id="bind-who" class="subtitle" style="margin:0 0 8px;">Rebinding P1. Click a key, then press the new key. Escape cancels.</div>
  <div id="bind-grid" class="bind-grid"></div>
  </div>
  <div class="btn-row">
- <button id="opt-reset-binds" class="btn btn-sec" style="padding:10px 18px; font-size:13px;">Reset Defaults</button>
+ <button id="opt-reset-binds" class="btn btn-sec" style="padding:10px 18px; font-size:13px;">Reset P1</button>
+ <button id="opt-reset-all-binds" class="btn btn-sec" style="padding:10px 18px; font-size:13px;">Reset All Players</button>
  <button id="opt-back-btn" class="btn">Back to Menu</button>
  </div>
  </div>
@@ -739,6 +753,27 @@
  </div>
 </div>
 
+<!-- Gold gift. Text only, same menu card. P1 T, P2 Y, P3 N, P4 B. Controller: LB+RB. -->
+<div id="gift-screen" class="overlay">
+ <div class="menu-card" id="gift-card">
+ <h1>GIFT GOLD</h1>
+ <div class="subtitle" id="gift-blurb">Give 1 gold (10 silver). Transfers only. Not new earnings.</div>
+ <div id="gift-targets" class="btn-row"></div>
+ <div class="btn-row"><button id="gift-cancel" class="btn btn-sec" type="button">Cancel</button></div>
+ <div class="controls-strip">P1 T · P2 Y · P3 N · P4 B · LB+RB opens · Arrows / D-pad choose · Enter / A confirm · Escape / B cancel</div>
+ </div>
+</div>
+
+<!-- In-play pause. Pointer-unlock still uses the start card's Resume Defense. -->
+<div id="pause-screen" class="overlay">
+ <div class="menu-card" id="pause-card">
+ <h1>PAUSED</h1>
+ <div class="subtitle" id="pause-who">Paused. Pause key, Start, or Resume.</div>
+ <div class="btn-row"><button id="pause-resume-btn" class="btn" type="button">Resume</button><button id="pause-snow-btn" class="btn btn-sec" type="button" aria-pressed="true">Snow: On</button></div>
+ <div class="controls-strip">P1 P · P2 F · P3 C · P4 X · Start toggles · A / Enter resumes</div>
+ </div>
+</div>
+
 <!-- Game Over Screen -->
 <div id="gameover-screen" class="overlay">
  <div class="menu-card">
@@ -750,6 +785,10 @@
  <div class="info-box"><strong>Monsters Slain</strong><span id="go-kills">0</span></div>
  <div class="info-box"><strong>Final Level</strong><span id="go-level">1</span></div>
  <div class="info-box"><strong>Weapons Unlocked</strong><span id="go-weapon">1 / 22</span></div>
+ </div>
+ <div id="go-players" class="info-grid" style="margin-bottom:12px;"></div>
+ <div class="info-box" style="margin-bottom:16px; text-align:left;">
+ <strong>High Score</strong><span id="go-high-score">no high score yet</span>
  </div>
  <div class="btn-row">
  <button id="retry-wave-btn" class="btn">🔄 Try Level Again</button>
@@ -871,14 +910,11 @@
  return Math.max(min, Math.min(max, n));
  }
 
- function sanitizeKeybinds(raw) {
- const clean = Object.assign({}, DEFAULT_KEYBINDS);
- if (!raw || typeof raw !== 'object') return clean;
- for (const k of Object.keys(DEFAULT_KEYBINDS)) {
- const v = raw[k];
- if (typeof v === 'string' && /^[A-Za-z0-9]{1,20}$/.test(v)) clean[k] = v;
- }
- return clean;
+ // Per-player keyboard maps live under bastionBellKeybinds.
+ // A legacy flat object is P1 only. P2–P4 keep their current keys.
+ // Gamepad profiles stay on the built-in Xbox / 8BitDo maps until a player changes a keyboard bind.
+ function bindCodeOk(code) {
+ return typeof code === 'string' && /^[A-Za-z0-9]{1,20}$/.test(code);
  }
 
  // =========================================================================
@@ -899,8 +935,48 @@
  deploy50: 'Digit0',
  cycleWeapon: 'KeyQ',
  dropMine: 'KeyV',
- selectMines: 'KeyM'
+ selectMines: 'KeyM',
+ pause: 'KeyP',
+ gift: 'KeyT',
+ shoot: ''
  };
+
+ // P2 arrows turn. P3–P4 had no move keys, so those stay unbound until remapped.
+ const EXTRA_PARTIAL = [
+ null,
+ {
+ forward: 'ArrowUp',
+ backward: 'ArrowDown',
+ left: 'ArrowLeft',
+ right: 'ArrowRight',
+ reload: 'Period',
+ grenadeCycle: 'Numpad6',
+ grenadeCyclePrev: 'Numpad4',
+ deploy50: 'Numpad0',
+ cycleWeapon: 'Comma',
+ dropMine: 'Numpad1',
+ selectMines: 'Numpad2',
+ pause: 'KeyF',
+ gift: 'KeyY',
+ shoot: 'Enter'
+ },
+ {
+ grenadeCycle: 'KeyJ',
+ grenadeCyclePrev: 'KeyH',
+ dropMine: 'KeyU',
+ selectMines: 'KeyI',
+ pause: 'KeyC',
+ gift: 'KeyN'
+ },
+ {
+ grenadeCycle: 'KeyL',
+ grenadeCyclePrev: 'KeyK',
+ dropMine: 'KeyO',
+ selectMines: 'KeyP',
+ pause: 'KeyX',
+ gift: 'KeyB'
+ }
+ ];
 
  const BIND_LABELS = {
  forward: 'Move Forward',
@@ -917,11 +993,58 @@
  deploy50: 'Deploy Dual .50 Cal',
  cycleWeapon: 'Cycle Weapon',
  dropMine: 'Drop Mine',
- selectMines: 'Select Mines'
+ selectMines: 'Select Mines',
+ pause: 'Pause',
+ gift: 'Gift Gold',
+ shoot: 'Shoot'
  };
 
+ function defaultBindsFor(index) {
+ const i = index | 0;
+ if (i <= 0) return Object.assign({}, DEFAULT_KEYBINDS);
+ const blank = {};
+ Object.keys(DEFAULT_KEYBINDS).forEach(k => { blank[k] = ''; });
+ return Object.assign(blank, EXTRA_PARTIAL[i] || {});
+ }
+
+ function sanitizePlayerBinds(raw, defaults) {
+ const clean = Object.assign({}, defaults);
+ if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return clean;
+ Object.keys(defaults).forEach(k => {
+ const v = raw[k];
+ if (bindCodeOk(v)) clean[k] = v;
+ });
+ return clean;
+ }
+
+ function isLegacyFlatBinds(raw) {
+ if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+ if (Array.isArray(raw.players)) return false;
+ const keys = Object.keys(DEFAULT_KEYBINDS);
+ for (let i = 0; i < keys.length; i++) {
+ if (typeof raw[keys[i]] === 'string') return true;
+ }
+ return false;
+ }
+
+ function loadPlayerKeybinds(raw) {
+ const out = [0, 1, 2, 3].map(i => defaultBindsFor(i));
+ try {
+ if (!raw || typeof raw !== 'object') return out;
+ if (Array.isArray(raw.players)) {
+ for (let i = 0; i < 4; i++) out[i] = sanitizePlayerBinds(raw.players[i], defaultBindsFor(i));
+ return out;
+ }
+ if (isLegacyFlatBinds(raw)) out[0] = sanitizePlayerBinds(raw, defaultBindsFor(0));
+ } catch (err) {}
+ return out;
+ }
+
  let savedBinds = null;
- try { savedBinds = JSON.parse(localStorage.getItem('bastionBellKeybinds') || 'null'); } catch (e) {}
+ try { savedBinds = JSON.parse(localStorage.getItem('bastionBellKeybinds') || 'null'); } catch (e) { savedBinds = null; }
+ const playerKeybinds = loadPlayerKeybinds(savedBinds);
+ let bindPlayerIndex = 0;
+ let listeningBindAction = null;
 
  const settings = {
  sensitivity: 1.0,
@@ -934,10 +1057,8 @@
  padSensitivity: 1.0,
  aimAssist: 1.0,
  infiniteMode: false,
- keybinds: sanitizeKeybinds(savedBinds)
+ keybinds: playerKeybinds[0]
  };
-
- let listeningBindAction = null;
 
  function formatKeyCode(code) {
  if (!code) return '---';
@@ -948,18 +1069,75 @@
  return code.replace(/^Key/, '').replace(/^Digit/, '');
  }
 
+ function persistKeybinds() {
+ const payload = { v: 2, players: playerKeybinds.map(b => Object.assign({}, b)) };
+ try { localStorage.setItem('bastionBellKeybinds', JSON.stringify(payload)); } catch (e) {}
+ }
+
+ function applyKeybind(index, action, code) {
+ const i = index | 0;
+ if (i < 0 || i > 3) return null;
+ if (!Object.prototype.hasOwnProperty.call(BIND_LABELS, action)) return null;
+ if (!bindCodeOk(code)) return null;
+ if (!playerKeybinds[i]) playerKeybinds[i] = defaultBindsFor(i);
+ playerKeybinds[i][action] = code;
+ settings.keybinds = playerKeybinds[0];
+ persistKeybinds();
+ renderKeybindsUI();
+ return code;
+ }
+
+ function clearKeybinds(index) {
+ listeningBindAction = null;
+ const all = index === undefined || index === null || index === 'all' || index === -1;
+ if (all) {
+ for (let i = 0; i < 4; i++) {
+ const fresh = defaultBindsFor(i);
+ Object.keys(playerKeybinds[i]).forEach(k => { delete playerKeybinds[i][k]; });
+ Object.assign(playerKeybinds[i], fresh);
+ }
+ settings.keybinds = playerKeybinds[0];
+ try { localStorage.removeItem('bastionBellKeybinds'); } catch (e) {}
+ } else {
+ const i = index | 0;
+ if (i < 0 || i > 3) return null;
+ const fresh = defaultBindsFor(i);
+ Object.keys(playerKeybinds[i]).forEach(k => { delete playerKeybinds[i][k]; });
+ Object.assign(playerKeybinds[i], fresh);
+ settings.keybinds = playerKeybinds[0];
+ persistKeybinds();
+ }
+ renderKeybindsUI();
+ return true;
+ }
+
  function renderKeybindsUI() {
  const grid = document.getElementById('bind-grid');
  if (!grid) return;
+ const who = Math.max(0, Math.min(3, bindPlayerIndex | 0));
+ bindPlayerIndex = who;
+ const map = playerKeybinds[who] || defaultBindsFor(who);
+ grid.dataset.player = String(who);
  grid.innerHTML = '';
+ document.querySelectorAll('[data-bind-player]').forEach(btn => {
+ const on = String(btn.dataset.bindPlayer) === String(who);
+ btn.classList.toggle('active', on);
+ btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+ });
+ const label = document.getElementById('bind-who');
+ if (label) label.textContent = 'Rebinding P' + (who + 1) + '. Click a key, then press the new key. Escape cancels.';
+ const resetBtn = document.getElementById('opt-reset-binds');
+ if (resetBtn) resetBtn.textContent = 'Reset P' + (who + 1);
  Object.keys(BIND_LABELS).forEach(action => {
  const row = document.createElement('div');
  row.className = 'bind-row';
  const lbl = document.createElement('span');
  lbl.textContent = BIND_LABELS[action];
  const btn = document.createElement('button');
+ btn.type = 'button';
+ btn.dataset.action = action;
  btn.className = 'bind-btn' + (listeningBindAction === action ? ' listening' : '');
- btn.textContent = listeningBindAction === action ? 'Press Key...' : formatKeyCode(settings.keybinds[action]);
+ btn.textContent = listeningBindAction === action ? 'Press Key...' : formatKeyCode(map[action]);
  btn.addEventListener('click', () => {
  listeningBindAction = (listeningBindAction === action) ? null : action;
  renderKeybindsUI();
@@ -971,12 +1149,19 @@
  }
  renderKeybindsUI();
 
- document.getElementById('opt-reset-binds').addEventListener('click', () => {
- settings.keybinds = Object.assign({}, DEFAULT_KEYBINDS);
+ document.querySelectorAll('[data-bind-player]').forEach(btn => {
+ btn.addEventListener('click', () => {
+ bindPlayerIndex = parseInt(btn.dataset.bindPlayer, 10) || 0;
  listeningBindAction = null;
- try { localStorage.removeItem('bastionBellKeybinds'); } catch (e) {}
  renderKeybindsUI();
  });
+ });
+
+ document.getElementById('opt-reset-binds').addEventListener('click', () => {
+ clearKeybinds(bindPlayerIndex);
+ });
+ const resetAllBindsBtn = document.getElementById('opt-reset-all-binds');
+ if (resetAllBindsBtn) resetAllBindsBtn.addEventListener('click', () => { clearKeybinds('all'); });
 
  function getDifficultyLabel(val) {
  if (val <= 0.7) return `Easy (${val.toFixed(1)}x)`;
@@ -1038,8 +1223,7 @@
  settings.snow = Math.round(clampNum(e.target.value, 0, 3, 2));
  const names = ['Off', 'Light', 'Heavy', 'Blizzard'];
  document.getElementById('opt-snow-val').textContent = names[settings.snow] || 'Heavy';
- snowPoints.visible = settings.snow > 0;
- bigSnowPoints.visible = settings.snow >= 2;
+ applySnowVisibility();
  scene.fog.density = settings.snow === 3 ? 0.0135 : (settings.snow === 2 ? 0.0095 : 0.0075);
  });
  document.getElementById('opt-pad-profile').addEventListener('change', e => {
@@ -1323,6 +1507,7 @@
 
  // Holiday themes sit on the shared courtyard. Classic is the default so older seeds stay day-lit.
  let activeTheme = 'classic';
+ var liveLevelReady = false;
  let themeRoot = null;
  let themeLights = [];
  let themeTrees = [];
@@ -2838,6 +3023,8 @@
  selectedThemeChoice = activeTheme;
  paintThemePicker();
  rebuildThemeDressing();
+ refreshAllMonsterGlow();
+ rememberLiveLevel();
  return themeInfo();
  }
  function ensureBonePool() {
@@ -3198,7 +3385,7 @@
  minX: Math.min(-36.8, -f.halfX - 1.5),
  maxX: Math.max(36.8, f.halfX + 1.5),
  minZ: Math.min(-59.5, f.zSouth - 2),
- maxZ: 20.2
+ maxZ: 22.4
  };
  }
  function waveMonsterCount(wave, field) {
@@ -4298,6 +4485,7 @@
  courtyard = use;
  if (baseVoxelCount > 0) paintCourtyard(use);
  else updateSeedChips();
+ if (liveLevelReady) rememberLiveLevel();
  return use;
  }
  function startCourtyardRun(fromClock) {
@@ -4720,6 +4908,41 @@
  new THREE.PointsMaterial({ color: 0xf0f9ff, size: 0.42, transparent: true, opacity: 0.9 })
  );
  scene.add(bigSnowPoints);
+ var snowToggleOn = true;
+ function loadSnowToggle() {
+ try {
+ const raw = localStorage.getItem('bastionBellSnowOn');
+ if (raw === '0' || raw === 'false') snowToggleOn = false;
+ else if (raw === '1' || raw === 'true') snowToggleOn = true;
+ } catch (e) { snowToggleOn = true; }
+ }
+ function snowDrawLevel() {
+ if (!snowToggleOn) return 0;
+ const n = settings.snow | 0;
+ return n > 0 ? n : 2;
+ }
+ function applySnowVisibility() {
+ const n = snowDrawLevel();
+ snowPoints.visible = n > 0;
+ bigSnowPoints.visible = n >= 2;
+ }
+ function paintSnowToggle() {
+ const btn = document.getElementById('pause-snow-btn');
+ if (!btn) return;
+ btn.textContent = snowToggleOn ? 'Snow: On' : 'Snow: Off';
+ btn.setAttribute('aria-pressed', snowToggleOn ? 'true' : 'false');
+ }
+ function applySnowToggle(on) {
+ snowToggleOn = !!on;
+ try { localStorage.setItem('bastionBellSnowOn', snowToggleOn ? '1' : '0'); } catch (e) {}
+ applySnowVisibility();
+ paintSnowToggle();
+ return snowToggleOn;
+ }
+ function readSnowToggle() { return !!snowToggleOn; }
+ loadSnowToggle();
+ applySnowVisibility();
+ paintSnowToggle();
 
  // Festive Christmas Lights on Castle Battlements, Gatehouse, Bell Arch & Bridge Iron Chains
  // (Wooden bridge planks & railings remain completely unchanged and clean!)
@@ -5331,6 +5554,7 @@
  mines: 0,
  minesBought: 0,
  minesBoughtLevel: 1,
+ mineTier: 1,
  minesSelected: false,
  mineFireLatch: false,
 
@@ -5362,7 +5586,7 @@
  reloading: false,
  reloadTimer: 0,
  recoil: 0,
- castleworks: { gate: 0, well: 0, shrine: 0, bell: 0, spikes: 0 },
+ castleworks: { gate: 0, well: 0, shrine: 0, bell: 0, spikes: 0, walls: 0 },
  partyKits: [
  { bandolier: false, dashOil: false, spotter: false },
  { bandolier: false, dashOil: false, spotter: false },
@@ -5372,6 +5596,202 @@
  silverFlash: 0
  };
  gameStateReady = true;
+
+ // Per-player silver. 10 silver = 1 gold. state.silver reads the sum of active wallets.
+ // Writing state.silver parks that amount on the current shopper (P1 if no shop is open),
+ // zeros the other wallets, and marks the purse shared so a later non-P1 shop buy can spend it.
+ // setGold, world coins, and gifts leave personal balances that only that player can spend.
+ const wallets = [0, 0, 0, 0];
+ let silverAssignMode = true;
+ let lastSpendIndex = 0;
+ const GIFT_SILVER = 10;
+ // P2–P4 mine keys are V/M, Num1/Num2, U/I, O/P. Gift keys stay off those and off move/shoot/grenade.
+ const GIFT_KEYS = ['KeyT', 'KeyY', 'KeyN', 'KeyB'];
+ let giftFrom = -1;
+ const weaponOwned = [[], [], [], []];
+
+ function activeWalletCount() {
+ let n = 1;
+ try {
+ if (typeof numPlayers === 'number' && numPlayers > 0) n = numPlayers;
+ } catch (err) { n = 1; }
+ return Math.max(1, Math.min(4, n | 0));
+ }
+ function walletSum() {
+ const n = activeWalletCount();
+ let s = 0;
+ for (let i = 0; i < n; i++) s += wallets[i] || 0;
+ return s;
+ }
+ function anyShopOpen() {
+ if (state.shopOpen) return true;
+ try {
+ for (let i = 0; i < 4; i++) {
+ if (typeof isViewportShopOpen === 'function' && isViewportShopOpen(i)) return true;
+ }
+ } catch (err) {}
+ return false;
+ }
+ function purseHolder() {
+ try {
+ if (state.shopOpen) return shopperIndex | 0;
+ if (typeof isViewportShopOpen === 'function') {
+ if (isViewportShopOpen(shopperIndex)) return shopperIndex | 0;
+ for (let i = 0; i < 4; i++) if (isViewportShopOpen(i)) return i;
+ }
+ } catch (err) {}
+ return 0;
+ }
+ function writeSilver(value) {
+ const n = Math.max(0, Math.floor(Number(value) || 0));
+ const who = purseHolder();
+ for (let i = 0; i < 4; i++) wallets[i] = 0;
+ if (who >= 0 && who < 4) wallets[who] = n;
+ silverAssignMode = true;
+ }
+ function goldOf(index) {
+ const i = index | 0;
+ if (i < 0 || i > 3) return 0;
+ return wallets[i] || 0;
+ }
+ function setGold(index, amount) {
+ const i = index | 0;
+ if (i < 0 || i > 3) return 0;
+ silverAssignMode = false;
+ wallets[i] = Math.max(0, Math.floor(Number(amount) || 0));
+ return wallets[i];
+ }
+ function canAfford(index, amount) {
+ const cost = Math.max(0, Math.floor(Number(amount) || 0));
+ if (cost <= 0) return true;
+ const i = index | 0;
+ if (i < 0 || i > 3) return false;
+ if ((wallets[i] || 0) >= cost) return true;
+ if (!silverAssignMode) return false;
+ const n = activeWalletCount();
+ for (let k = 0; k < n; k++) if ((wallets[k] || 0) >= cost) return true;
+ return false;
+ }
+ function spendSilver(index, amount) {
+ const cost = Math.max(0, Math.floor(Number(amount) || 0));
+ const i = index | 0;
+ if (cost <= 0) return true;
+ if (i < 0 || i > 3) return false;
+ if ((wallets[i] || 0) >= cost) {
+ wallets[i] -= cost;
+ lastSpendIndex = i;
+ return true;
+ }
+ if (silverAssignMode) {
+ const n = activeWalletCount();
+ for (let k = 0; k < n; k++) {
+ if ((wallets[k] || 0) >= cost) {
+ wallets[k] -= cost;
+ lastSpendIndex = k;
+ return true;
+ }
+ }
+ }
+ return false;
+ }
+ function refundSilver(amount) {
+ const n = Math.max(0, Math.floor(Number(amount) || 0));
+ const i = lastSpendIndex | 0;
+ if (i < 0 || i > 3 || n <= 0) return;
+ wallets[i] = (wallets[i] || 0) + n;
+ }
+ function walletSnapshot() {
+ return { amounts: wallets.slice(), shared: silverAssignMode, last: lastSpendIndex };
+ }
+ function restoreWalletSnapshot(snap) {
+ if (!snap || !snap.amounts) return;
+ for (let i = 0; i < 4; i++) wallets[i] = snap.amounts[i] || 0;
+ silverAssignMode = !!snap.shared;
+ lastSpendIndex = snap.last | 0;
+ }
+ function creditWorldCoin(value) {
+ const n = Math.max(0, Math.floor(Number(value) || 0));
+ if (n <= 0) return;
+ const count = activeWalletCount();
+ for (let i = 0; i < count; i++) {
+ wallets[i] = (wallets[i] || 0) + n;
+ noteRunGold(i, n);
+ }
+ silverAssignMode = false;
+ }
+ function giftGold(fromIndex, toIndex, amount) {
+ const from = fromIndex | 0;
+ const to = toIndex | 0;
+ const n = Math.floor(Number(amount) || 0);
+ const players = activeWalletCount();
+ const fail = (reason) => ({
+ ok: false,
+ reason: reason,
+ from: from,
+ to: to,
+ amount: n,
+ silver: walletSum(),
+ fromGold: wallets[from] || 0,
+ toGold: wallets[to] || 0
+ });
+ if (players < 2) return fail('solo');
+ if (from < 0 || to < 0 || from >= players || to >= players) return fail('player');
+ if (from === to) return fail('self');
+ if (n <= 0) return fail('amount');
+ if (silverAssignMode) silverAssignMode = false;
+ if ((wallets[from] || 0) < n) return fail('silver');
+ wallets[from] -= n;
+ wallets[to] = (wallets[to] || 0) + n;
+ updateHUD();
+ updateSplitHUD();
+ return { ok: true, reason: '', from: from, to: to, amount: n, silver: walletSum(), fromGold: wallets[from], toGold: wallets[to] };
+ }
+ function weaponHasOwner(weaponIdx) {
+ for (let p = 0; p < 4; p++) if (weaponOwned[p] && weaponOwned[p][weaponIdx]) return true;
+ return false;
+ }
+ function playerOwnsWeapon(index, weaponIdx) {
+ return !!(weaponOwned[index] && weaponOwned[index][weaponIdx]);
+ }
+ function shopWeaponHave(index, weaponIdx) {
+ const w = state.weapons[weaponIdx];
+ if (!w) return false;
+ if (!w.def.shopOnly) return !!w.unlocked;
+ if (playerOwnsWeapon(index, weaponIdx)) return true;
+ if (w.unlocked && !weaponHasOwner(weaponIdx)) return true;
+ return false;
+ }
+ function noteShopPurchase(index, weaponIdx) {
+ const i = index | 0;
+ if (i < 0 || i > 3) return;
+ if (!weaponOwned[i]) weaponOwned[i] = [];
+ weaponOwned[i][weaponIdx] = true;
+ if (state.weapons[weaponIdx]) state.weapons[weaponIdx].unlocked = true;
+ }
+ function ownsWeapon(index, idOrIdx) {
+ let weaponIdx = idOrIdx;
+ if (typeof idOrIdx === 'string') weaponIdx = state.weapons.findIndex(w => w.def.id === idOrIdx);
+ if (weaponIdx < 0) return false;
+ return shopWeaponHave(index | 0, weaponIdx);
+ }
+ function cycleIdsFor(index) {
+ const list = [];
+ if (!state.weapons) return list;
+ const who = index | 0;
+ for (let i = 0; i < state.weapons.length; i++) {
+ const w = state.weapons[i];
+ if (!w || !w.unlocked) continue;
+ if (w.def && w.def.shopOnly && weaponHasOwner(i) && !playerOwnsWeapon(who, i)) continue;
+ list.push(i);
+ }
+ return list;
+ }
+ Object.defineProperty(state, 'silver', {
+ configurable: true,
+ enumerable: true,
+ get() { return walletSum(); },
+ set(v) { writeSilver(v); }
+ });
 
  function formatCoins(totalSilver) {
  const g = Math.floor(totalSilver / 10);
@@ -5516,6 +5936,7 @@
  }
 
  function initWeapons() {
+ for (let p = 0; p < 4; p++) weaponOwned[p] = [];
  const maxMags = getMaxMags(state.level);
  state.weapons = WEAPON_DEFS.map((def, idx) => ({
  def,
@@ -5550,7 +5971,7 @@
  }
 
  function cycleWeapon(dir = 1) {
- const unlocked = state.weapons.map((w, i) => w.unlocked ? i : -1).filter(i => i >= 0);
+ const unlocked = cycleIdsFor(0);
  if (unlocked.length <= 1) return;
  const curPos = unlocked.indexOf(state.currentWeaponIdx);
  const nextPos = (curPos + dir + unlocked.length) % unlocked.length;
@@ -5734,20 +6155,42 @@
  return false;
  }
 
+ let playerWarpCount = 0;
+ function unplayableWater(x, z) {
+ if (onFieldBridge(x, z) || onBridgeDeck(x, z)) return false;
+ if (fieldWaterAt(x, z)) return true;
+ if (isWaterOrBridgeDropZone(x, z)) return true;
+ return false;
+ }
+ function insideWalkable(x, z) {
+ const f = currentField();
+ if (z <= -24.05) {
+ if (x < -f.halfX - 0.8 || x > f.halfX + 0.8) return false;
+ if (z < f.zSouth - 1.2) return false;
+ return true;
+ }
+ if (z > 22.2) return false;
+ if (x < -40 || x > 40) return false;
+ return true;
+ }
+ function warpReasonAt(x, y, z) {
+ const gH = getGroundHeight(x, z);
+ if (y < -1.15) return 'under';
+ if (y < gH - 2.8) return 'through';
+ if (unplayableWater(x, z)) return 'water';
+ if (!insideWalkable(x, z)) return 'void';
+ return '';
+ }
+ function wouldWarpAt(x, y, z) { return warpReasonAt(x, y, z) !== ''; }
  function warpPlayerIfFallen(posObj, velObj, label = 'P1', color = '#38bdf8') {
- const gH = getGroundHeight(posObj.x, posObj.z);
- const water = isWaterOrBridgeDropZone(posObj.x, posObj.z) || fieldWaterAt(posObj.x, posObj.z);
- const belowFeet = posObj.y < gH - 0.35;
- const underWorld = posObj.y < -1.15;
- const sunkOnHighGround = gH >= -0.05 && posObj.y < 1.2;
- if (belowFeet || underWorld || water || sunkOnHighGround) {
+ const reason = warpReasonAt(posObj.x, posObj.y, posObj.z);
+ if (!reason) return false;
  posObj.set(0, 4.72, 0.5);
  if (velObj) velObj.set(0, 0, 0);
+ playerWarpCount++;
  showBanner(`⚓ ${label} WARPED BACK TO SAFE RAMP (NO FALLING IN WATER)!`, color);
  playTone(300, 620, 0.14, 0.14, 'triangle');
  return true;
- }
- return false;
  }
 
  function isOutOfBoundsXZ(x, z) {
@@ -5808,8 +6251,13 @@
  prevShoot: false, prevAds: false, prevJump: false, prevReload: false,
  prevCycle: false, prevGrenade: false, prevGrenadeCycle: false, prevGrenadeCyclePrev: false,
  prevInteract: false, prevDash: false, prevTurret: false, prevPause: false,
- prevDrop: false, prevMineSel: false
+ prevDrop: false, prevMineSel: false, prevGiftChord: false
  };
+ let playerPaused = false;
+ let playerPausedBy = -1;
+ let ignoreUnlockMenu = false;
+ const padPausePrev = [false, false, false, false];
+ const PAUSE_KEYS = ['KeyP', 'KeyF', 'KeyC', 'KeyX'];
 
  let framePads = null;
  let framePadPolls = 0;
@@ -6390,7 +6838,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (btn(13) || ax[1] > 0.55) dDown = true;
  if (btn(14) || ax[0] < -0.55) dLeft = true;
  if (btn(15) || ax[0] > 0.55) dRight = true;
- if (btn(0) || btn(9)) confirm = true;
+ if (btn(0) || (btn(9) && !pauseOverlayOpen())) confirm = true;
  if (btn(1) || btn(8)) back = true;
  if (btn(4)) lb = true;
  if (btn(5)) rb = true;
@@ -6421,12 +6869,200 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  menuPadPrevRb = true;
  p1PadState.prevInteract = true;
  p1PadState.prevPause = true;
+ for (let pi = 0; pi < 4; pi++) padPausePrev[pi] = true;
  extraPlayers.forEach(ep => { ep.prevShopBtn = true; });
  }
+
+ function giftScreenEl() { return document.getElementById('gift-screen'); }
+ function giftIsOpen() {
+ const el = giftScreenEl();
+ return !!(el && el.style.display === 'flex');
+ }
+ function closeGift() {
+ const el = giftScreenEl();
+ if (el) el.style.display = 'none';
+ giftFrom = -1;
+ }
+ function padGiftChord(pad) {
+ if (!pad || !pad.buttons) return false;
+ const b = pad.buttons;
+ const on = (idx) => !!(b[idx] && (b[idx].pressed || b[idx].value > 0.35));
+ return on(4) && on(5);
+ }
+ function openGift(index) {
+ const from = index | 0;
+ const players = activeWalletCount();
+ if (players < 2) return { ok: false, reason: 'solo', open: false };
+ if (from < 0 || from >= players) return { ok: false, reason: 'player', open: false };
+ if (state.gameOver || splashIsVisible() || anyShopOpen()) return { ok: false, reason: 'menu', open: false };
+ if (menuBlocksGameplay() && !giftIsOpen()) return { ok: false, reason: 'menu', open: false };
+ const el = giftScreenEl();
+ if (!el) return { ok: false, reason: 'missing', open: false };
+ giftFrom = from;
+ const host = document.getElementById('gift-targets');
+ const blurb = document.getElementById('gift-blurb');
+ if (blurb) blurb.textContent = 'P' + (from + 1) + ' gives 1 gold (10 silver). Transfers only — not new earnings. Wallet ' + formatCoins(goldOf(from)) + '.';
+ if (host) {
+ while (host.firstChild) host.removeChild(host.firstChild);
+ for (let t = 0; t < players; t++) {
+ if (t === from) continue;
+ const btn = document.createElement('button');
+ btn.type = 'button';
+ btn.className = 'btn';
+ btn.dataset.to = String(t);
+ btn.textContent = 'Gift P' + (t + 1);
+ btn.addEventListener('click', () => {
+ const res = giftGold(giftFrom, t, GIFT_SILVER);
+ if (res.ok) showBanner('Gifted 1 gold to P' + (t + 1), '#fde047');
+ else showBanner('Gift refused', '#fbbf24');
+ closeGift();
+ });
+ host.appendChild(btn);
+ }
+ }
+ el.style.display = 'flex';
+ menuPadFocusEl = null;
+ menuPadFocusIdx = 0;
+ menuPadOverlayKey = '';
+ latchMenuConfirmEdges();
+ const first = host && host.querySelector('button');
+ if (first) {
+ menuPadFocusEl = first;
+ menuPadFocusIdx = 0;
+ paintMenuFocus(first);
+ }
+ return { ok: true, open: true, from: from };
+ }
+ const giftCancelBtn = document.getElementById('gift-cancel');
+ if (giftCancelBtn) giftCancelBtn.addEventListener('click', () => closeGift());
+
+ function giftCodeFor(index) {
+ const i = Math.max(0, Math.min(3, index | 0));
+ const map = playerKeybinds[i];
+ if (map && typeof map.gift === 'string' && map.gift) return map.gift;
+ return GIFT_KEYS[i] || GIFT_KEYS[0];
+ }
+ function giftIndexForCode(code) {
+ const n = Math.max(1, Math.min(4, numPlayers || 1));
+ for (let i = 0; i < n; i++) if (giftCodeFor(i) === code) return i;
+ return -1;
+ }
+ function pauseCodeFor(index) {
+ const i = index | 0;
+ const map = playerKeybinds[Math.max(0, Math.min(3, i))];
+ if (map && typeof map.pause === 'string' && map.pause) return map.pause;
+ if (i <= 0) return PAUSE_KEYS[0];
+ return PAUSE_KEYS[i] || PAUSE_KEYS[0];
+ }
+ function pauseIndexForCode(code) {
+ const n = Math.max(1, Math.min(4, numPlayers || 1));
+ for (let i = 0; i < n; i++) if (pauseCodeFor(i) === code) return i;
+ return -1;
+ }
+ function pauseScreenEl() { return document.getElementById('pause-screen'); }
+ function pauseOverlayOpen() {
+ const el = pauseScreenEl();
+ return !!(el && window.getComputedStyle(el).display !== 'none');
+ }
+ function pauseBlockedByMenu() {
+ if (splashIsVisible() || state.gameOver || state.shopOpen || anyShopOpen() || giftIsOpen()) return true;
+ const startEl = document.getElementById('start-screen');
+ if (startEl && window.getComputedStyle(startEl).display !== 'none') return true;
+ const optEl = document.getElementById('options-screen');
+ if (optEl && window.getComputedStyle(optEl).display !== 'none') return true;
+ return false;
+ }
+ function endPlayerPause() {
+ playerPaused = false;
+ playerPausedBy = -1;
+ const el = pauseScreenEl();
+ if (el) el.style.display = 'none';
+ }
+ function showPauseOverlay(byIndex) {
+ const el = pauseScreenEl();
+ if (!el) return;
+ const who = document.getElementById('pause-who');
+ if (who) who.textContent = 'P' + ((byIndex | 0) + 1) + ' paused. Pause key, Start, or Resume.';
+ el.style.display = 'flex';
+ menuPadOverlayKey = '';
+ menuPadFocusEl = null;
+ menuPadFocusIdx = 0;
+ latchMenuConfirmEdges();
+ const resume = document.getElementById('pause-resume-btn');
+ if (resume) {
+ menuPadFocusEl = resume;
+ menuPadFocusIdx = 0;
+ paintMenuFocus(resume);
+ }
+ paintSnowToggle();
+ }
+ function hidePauseOverlay() {
+ const el = pauseScreenEl();
+ if (el) el.style.display = 'none';
+ clearMenuFocusChrome();
+ }
+ function releasePointerForPause() {
+ ignoreUnlockMenu = true;
+ try { if (document.exitPointerLock) document.exitPointerLock(); } catch (err) {}
+ }
+ function relockPointer() {
+ ignoreUnlockMenu = true;
+ if (!renderer || !renderer.domElement || !renderer.domElement.requestPointerLock) return;
+ try {
+ const p = renderer.domElement.requestPointerLock();
+ if (p && p.catch) p.catch(function () {});
+ } catch (err) {}
+ }
+ function togglePause(index) {
+ if (state.gameOver) return { paused: !!playerPaused, by: playerPausedBy, ok: false, reason: 'over' };
+ if (playerPaused) {
+ const by = playerPausedBy;
+ playerPaused = false;
+ playerPausedBy = -1;
+ hidePauseOverlay();
+ mouseDown = false;
+ relockPointer();
+ return { paused: false, by: by, ok: true, reason: '' };
+ }
+ if (pauseBlockedByMenu() || !state.running) return { paused: false, by: playerPausedBy, ok: false, reason: 'menu' };
+ const who = (typeof index === 'number') ? (index | 0) : 0;
+ playerPaused = true;
+ playerPausedBy = who;
+ mouseDown = false;
+ setScoped(false);
+ showPauseOverlay(who);
+ releasePointerForPause();
+ return { paused: true, by: who, ok: true, reason: '' };
+ }
+ function assignedPausePad(index) {
+ const pads = getConnectedGamepads();
+ const count = Math.max(1, Math.min(4, numPlayers || 1));
+ if (index < 0 || index >= count) return null;
+ if (index === 0) return (pads.length > 0 && (numPlayers === 1 || pads.length >= numPlayers)) ? pads[0] : null;
+ const padIdx = (pads.length >= numPlayers) ? index : (index - 1);
+ return pads[padIdx] || null;
+ }
+ function pollPlayerPause() {
+ const count = Math.max(1, Math.min(4, numPlayers || 1));
+ const block = pauseBlockedByMenu();
+ for (let i = 0; i < 4; i++) {
+ if (i >= count) { padPausePrev[i] = false; continue; }
+ const pad = assignedPausePad(i);
+ const pressed = !!(pad && readPadInputs(pad).pause);
+ if (pressed && !padPausePrev[i] && !block && !state.gameOver && (playerPaused || state.running)) togglePause(i);
+ padPausePrev[i] = pressed;
+ }
+ p1PadState.prevPause = !!padPausePrev[0];
+ }
+ const pauseResumeBtn = document.getElementById('pause-resume-btn');
+ if (pauseResumeBtn) pauseResumeBtn.addEventListener('click', () => { if (playerPaused) togglePause(playerPausedBy); });
+ const pauseSnowBtn = document.getElementById('pause-snow-btn');
+ if (pauseSnowBtn) pauseSnowBtn.addEventListener('click', () => { applySnowToggle(!snowToggleOn); });
 
  function goMenuBack() {
  const goEl = document.getElementById('gameover-screen');
  if (goEl && window.getComputedStyle(goEl).display !== 'none') return;
+ if (giftIsOpen()) { closeGift(); return; }
  const shopEl = document.getElementById('shop-screen');
  const optEl = document.getElementById('options-screen');
  if (shopEl && window.getComputedStyle(shopEl).display !== 'none') { closeShop(); return; }
@@ -6434,6 +7070,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const backBtn = document.getElementById('opt-back-btn');
  if (backBtn) backBtn.click();
  return;
+ }
+ if (playerPaused) {
+ const pauseStart = document.getElementById('start-screen');
+ const startOpen = pauseStart && window.getComputedStyle(pauseStart).display !== 'none';
+ if (!startOpen) { togglePause(playerPausedBy); return; }
  }
  const startEl = document.getElementById('start-screen');
  if (hasStartedRun && !state.gameOver && startEl && window.getComputedStyle(startEl).display !== 'none') {
@@ -6530,27 +7171,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (!pad) {
  p1PadState.moveFwd = 0;
  p1PadState.moveStrafe = 0;
+ p1PadState.prevGiftChord = false;
  return;
  }
 
  const inp = readPadInputs(pad);
+ const giftChord = padGiftChord(pad);
  if (inp.anyActivity && activeInputMode !== inp.profile) {
  activeInputMode = inp.profile;
  updateHUD();
  }
 
- // Start pauses only while playing. Menus own A / B / Start / D-pad.
- if (inp.pause && !p1PadState.prevPause && state.running && !menuBlocksGameplay()) {
- state.running = false;
- mouseDown = false;
- setScoped(false);
- refreshSaveMenuUI();
- document.getElementById('start-screen').style.display = 'flex';
- document.getElementById('play-btn').textContent = 'Resume Defense';
- menuPadOverlayKey = '';
- menuPadFocusEl = null;
- menuPadFocusIdx = 0;
- }
+ // Start toggles the pause overlay from pollPlayerPause. Menus own A / B / Start / D-pad.
  p1PadState.prevPause = inp.pause;
 
  if (isViewportShopOpen(0)) {
@@ -6569,10 +7201,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p1PadState.prevTurret = inp.deploy50;
  p1PadState.prevDrop = inp.dropMine;
  p1PadState.prevMineSel = inp.toggleMines;
+ p1PadState.prevGiftChord = giftChord;
  return;
  }
 
- if (!state.running || menuBlocksGameplay()) {
+ if (!state.running || playerPaused || menuBlocksGameplay()) {
  p1PadState.moveFwd = 0;
  p1PadState.moveStrafe = 0;
  p1PadState.prevShoot = inp.shoot;
@@ -6588,6 +7221,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p1PadState.prevTurret = inp.deploy50;
  p1PadState.prevDrop = inp.dropMine;
  p1PadState.prevMineSel = inp.toggleMines;
+ p1PadState.prevGiftChord = giftChord;
  return;
  }
 
@@ -6622,9 +7256,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (shrineOffer && shrineOffer.owner === 0) flipShrineFocus(1);
  else cycleWeapon(1);
  }
- if (inp.throwGrenade && !p1PadState.prevGrenade) throwGrenade();
- if (inp.cycleGrenade && !p1PadState.prevGrenadeCycle) cycleGrenadeType(null, 1);
- if (inp.cycleGrenadePrev && !p1PadState.prevGrenadeCyclePrev) cycleGrenadeType(null, -1);
+ if (giftChord && !p1PadState.prevGiftChord && numPlayers > 1 && !anyShopOpen()) openGift(0);
+ if (!giftChord && inp.throwGrenade && !p1PadState.prevGrenade) throwGrenade();
+ if (!giftChord && inp.cycleGrenade && !p1PadState.prevGrenadeCycle) cycleGrenadeType(null, 1);
+ if (!giftChord && inp.cycleGrenadePrev && !p1PadState.prevGrenadeCyclePrev) cycleGrenadeType(null, -1);
  if (inp.dropMine && !p1PadState.prevDrop && playerCanUseMines(0)) dropMine(0);
  if (inp.toggleMines && !p1PadState.prevMineSel && playerCanUseMines(0)) toggleMinesSelected(0);
  if (inp.dash && !p1PadState.prevDash) triggerDash();
@@ -6647,6 +7282,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p1PadState.prevTurret = inp.deploy50;
  p1PadState.prevDrop = inp.dropMine;
  p1PadState.prevMineSel = inp.toggleMines;
+ p1PadState.prevGiftChord = giftChord;
  }
 
  let pointerLocked = false;
@@ -6684,10 +7320,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  if (listeningBindAction) {
  e.preventDefault();
- if (e.code !== 'Escape') {
- settings.keybinds[listeningBindAction] = e.code;
- try { localStorage.setItem('bastionBellKeybinds', JSON.stringify(settings.keybinds)); } catch (err) {}
- }
+ if (e.code !== 'Escape') applyKeybind(bindPlayerIndex, listeningBindAction, e.code);
  listeningBindAction = null;
  renderKeybindsUI();
  return;
@@ -6727,9 +7360,26 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return;
  }
  }
+ if (giftIsOpen()) return;
+ if (!e.repeat && state.running && !state.gameOver && !menuBlocksGameplay() && !anyShopOpen()) {
+ const giftSlot = giftIndexForCode(e.code);
+ if (giftSlot >= 0) {
+ e.preventDefault();
+ openGift(giftSlot);
+ return;
+ }
+ }
  keys[e.code] = true;
  if (activeInputMode !== 'kbm') { activeInputMode = 'kbm'; }
- if (!state.running) return;
+ if (!e.repeat && !pauseBlockedByMenu()) {
+ const pauseSlot = pauseIndexForCode(e.code);
+ if (pauseSlot >= 0 && !state.gameOver && (playerPaused || state.running)) {
+ e.preventDefault();
+ togglePause(pauseSlot);
+ return;
+ }
+ }
+ if (!state.running || playerPaused) return;
  const kb = settings.keybinds;
  if (e.code === 'KeyE') {
  if (shrineOffer && shrineOffer.owner === 0) {
@@ -6741,22 +7391,28 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return;
  }
  }
+ if (kb.shoot && e.code === kb.shoot) mouseDown = true;
  if (e.code === kb.dash || e.code === 'ShiftLeft' || e.code === 'ShiftRight') triggerDash();
  if (e.code === kb.reload || e.code === kb.reloadAlt) startReload();
  if (e.code === kb.ads) setScoped(!state.ads);
  if (e.code === kb.deploy50) handleDual50Key();
  if (!e.repeat && !menuBlocksGameplay()) {
- const prevP1 = kb.grenadeCyclePrev || THROW_PREV_CODES[0];
- if (e.code === prevP1) cycleGrenadeType(null, -1);
- else if (e.code === kb.grenadeCycle || e.code === THROW_NEXT_CODES[0]) cycleGrenadeType(null, 1);
- else if (numPlayers > 1) {
- for (let pi = 1; pi < THROW_PREV_CODES.length; pi++) {
- if (pi >= numPlayers) break;
+ const throwCount = Math.max(1, Math.min(4, numPlayers || 1));
+ let throwHandled = false;
+ for (let pi = 0; pi < throwCount && !throwHandled; pi++) {
+ const map = playerKeybinds[pi] || {};
+ const prevCode = map.grenadeCyclePrev || (pi === 0 ? THROW_PREV_CODES[0] : '');
+ const nextCode = map.grenadeCycle || '';
+ const aliasNext = pi === 0 && e.code === THROW_NEXT_CODES[0];
+ const hitPrev = !!(prevCode && e.code === prevCode);
+ const hitNext = !!(nextCode && e.code === nextCode) || aliasNext;
+ if (!hitPrev && !hitNext) continue;
+ if (pi === 0) cycleGrenadeType(null, hitPrev ? -1 : 1);
+ else {
  const epCycle = extraPlayers.find(p => p.index === pi);
- if (!epCycle || isViewportShopOpen(pi)) continue;
- if (e.code === THROW_PREV_CODES[pi]) cycleGrenadeType(epCycle, -1);
- else if (e.code === THROW_NEXT_CODES[pi]) cycleGrenadeType(epCycle, 1);
+ if (epCycle && !isViewportShopOpen(pi)) cycleGrenadeType(epCycle, hitPrev ? -1 : 1);
  }
+ throwHandled = true;
  }
  }
  if (e.code === kb.cycleWeapon) {
@@ -6764,7 +7420,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  else cycleWeapon(1);
  }
  });
- document.addEventListener('keyup', e => { keys[e.code] = false; });
+ document.addEventListener('keyup', e => {
+ keys[e.code] = false;
+ if (settings.keybinds.shoot && e.code === settings.keybinds.shoot) mouseDown = false;
+ });
 
  document.addEventListener('mousemove', e => {
  if (!pointerLocked || !state.running) return;
@@ -6807,7 +7466,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  document.addEventListener('pointerlockchange', () => {
  pointerLocked = (document.pointerLockElement === renderer.domElement);
- if (!pointerLocked && state.running && !state.gameOver && !state.shopOpen) {
+ const skipUnlockMenu = ignoreUnlockMenu || playerPaused;
+ if (!pointerLocked && state.running && !skipUnlockMenu && !state.gameOver && !state.shopOpen) {
  state.running = false;
  mouseDown = false;
  setScoped(false);
@@ -6815,6 +7475,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  document.getElementById('start-screen').style.display = 'flex';
  document.getElementById('play-btn').textContent = 'Resume Defense';
  }
+ if (pointerLocked) ignoreUnlockMenu = false;
+ else if (!playerPaused && skipUnlockMenu) ignoreUnlockMenu = false;
  });
 
  // =========================================================================
@@ -6832,6 +7494,205 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const MINE_TRIGGER = 1.2;
  const MINE_BLAST_RADIUS = 4.6;
  const MINE_BLAST_DMG = 240;
+ const WALL_HP = [0, 50, 120, 220];
+ const UPGRADE_OFFERS = {
+ walls: [
+ { level: 1, price: 40, hp: 50, sku: 'wall-1', title: 'ALL — Curtain Walls L1', desc: 'Timber bracing on the gate and perimeter. +50 castle HP.' },
+ { level: 2, price: 110, hp: 120, sku: 'wall-2', title: 'ALL — Curtain Walls L2', desc: 'Iron courses on the front battlements. +120 castle HP total.' },
+ { level: 3, price: 200, hp: 220, sku: 'wall-3', title: 'ALL — Curtain Walls L3', desc: 'Full curtain reinforcement. +220 castle HP total.' }
+ ],
+ mines: [
+ { level: 1, price: MINE_PRICE, damage: MINE_BLAST_DMG, radius: MINE_BLAST_RADIUS, cap: MINE_CAP, sku: 'mine', title: 'Proximity Mine', desc: 'L1 stock. Same price, cap, drop, and select as before.' },
+ { level: 2, price: 75, damage: 380, radius: 5.8, cap: MINE_CAP, sku: 'mine-2', title: 'Proximity Mine L2', desc: 'This player only. Blast 380, radius 5.8. Cap stays 10.' },
+ { level: 3, price: 140, damage: 540, radius: 7.2, cap: MINE_CAP, sku: 'mine-3', title: 'Proximity Mine L3', desc: 'This player only. Blast 540, radius 7.2. Cap stays 10.' }
+ ],
+ weapons: [
+ { level: 1, price: 0, mult: 1, sku: 'wep-1', title: 'Weapon Level 1', desc: 'Base gun. Mk I–X is unchanged.' },
+ { level: 2, price: 160, mult: 1.4, sku: 'wep-2', title: 'Weapon Level 2', desc: '+40% damage on this player\'s equipped gun. Stacks with Mk. Does not replace Mk.' },
+ { level: 3, price: 320, mult: 1.85, sku: 'wep-3', title: 'Weapon Level 3', desc: '+85% damage on this player\'s equipped gun. Stacks with Mk. Does not replace Mk.' }
+ ]
+ };
+ const weaponPower = [[], [], [], []];
+ let wallBraceGroup = null;
+ function upgradeOffer(kind, level) {
+ const list = UPGRADE_OFFERS[kind];
+ if (!list) return null;
+ for (let i = 0; i < list.length; i++) if (list[i].level === level) return list[i];
+ return null;
+ }
+ function mineTierOf(index) {
+ const b = mineBag(index | 0);
+ if (!b) return 1;
+ const t = b.mineTier | 0;
+ return (t >= 1 && t <= 3) ? t : 1;
+ }
+ function equippedWeaponIndex(index) {
+ const i = index | 0;
+ if (i <= 0) return state.currentWeaponIdx || 0;
+ const ep = actorEp(i);
+ return ep ? (ep.weaponIdx || 0) : 0;
+ }
+ function weaponPowerLevel(index, weaponIdx) {
+ const i = index | 0;
+ if (i < 0 || i > 3 || weaponIdx < 0) return 1;
+ const row = weaponPower[i];
+ if (!row) return 1;
+ const n = row[weaponIdx] | 0;
+ return (n >= 2 && n <= 3) ? n : 1;
+ }
+ function weaponPowerMult(index, weaponIdx) {
+ const offer = upgradeOffer('weapons', weaponPowerLevel(index, weaponIdx));
+ return (offer && offer.mult) || 1;
+ }
+ function castleMaxFromWorks() {
+ const gate = (state.castleworks && state.castleworks.gate) || 0;
+ const walls = (state.castleworks && state.castleworks.walls) || 0;
+ return 100 + 25 * gate + (WALL_HP[walls] || 0);
+ }
+ function syncWallBraces() {
+ if (wallBraceGroup) {
+ scene.remove(wallBraceGroup);
+ disposeObject3D(wallBraceGroup);
+ wallBraceGroup = null;
+ }
+ const lvl = (state.castleworks && state.castleworks.walls) || 0;
+ if (lvl <= 0) return;
+ wallBraceGroup = new THREE.Group();
+ wallBraceGroup.name = 'wall-braces';
+ const stone = new THREE.MeshLambertMaterial({ color: 0x768191 });
+ const iron = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
+ const trim = new THREE.MeshBasicMaterial({ color: lvl >= 3 ? 0xfbbf24 : 0xcbd5e1 });
+ for (let side = -1; side <= 1; side += 2) {
+ for (let b = 0; b < lvl; b++) {
+ const mesh = new THREE.Mesh(new THREE.BoxGeometry(8.2, 0.18, 0.22), b === lvl - 1 ? trim : iron);
+ mesh.position.set(side * 9.2, 4.2 + b * 1.15, 3.2);
+ wallBraceGroup.add(mesh);
+ }
+ if (lvl >= 2) {
+ const posts = [6.2, 10.2, 13.2];
+ for (let p = 0; p < posts.length; p++) {
+ const post = new THREE.Mesh(new THREE.BoxGeometry(0.22, 3.4, 0.22), stone);
+ post.position.set(side * posts[p], 5.2, 3.2);
+ wallBraceGroup.add(post);
+ }
+ }
+ }
+ if (lvl >= 3) {
+ for (let s = 0; s < 2; s++) {
+ const cap = new THREE.Mesh(new THREE.BoxGeometry(0.28, 4.6, 16), iron);
+ cap.position.set(s === 0 ? -17.4 : 17.4, 5.6, 13);
+ wallBraceGroup.add(cap);
+ }
+ }
+ scene.add(wallBraceGroup);
+ }
+ function applyWallTier(level) {
+ const lvl = level | 0;
+ const cur = (state.castleworks.walls || 0);
+ if (lvl < 1 || lvl > 3 || lvl <= cur) return false;
+ const before = castleMaxFromWorks();
+ state.castleworks.walls = lvl;
+ const next = castleMaxFromWorks();
+ state.maxCastleHp = next;
+ state.castleHp = Math.min(next, state.castleHp + Math.max(0, next - before));
+ syncWallBraces();
+ return true;
+ }
+ function applyMineTier(index, level) {
+ const b = mineBag(index | 0);
+ if (!b) return false;
+ const lvl = level | 0;
+ if (lvl < 1 || lvl > 3 || lvl <= mineTierOf(index)) return false;
+ b.mineTier = lvl;
+ return true;
+ }
+ function applyWeaponPower(index, weaponIdx, level) {
+ const i = index | 0;
+ const idx = weaponIdx | 0;
+ if (i < 0 || i > 3 || idx < 0) return false;
+ const lvl = level | 0;
+ if (lvl < 1 || lvl > 3 || lvl <= weaponPowerLevel(i, idx)) return false;
+ if (!weaponPower[i]) weaponPower[i] = [];
+ weaponPower[i][idx] = lvl;
+ return true;
+ }
+ function upgradeTiers(index) {
+ const i = index | 0;
+ const widx = equippedWeaponIndex(i);
+ const w = state.weapons[widx];
+ const copy = (kind) => UPGRADE_OFFERS[kind].map(o => Object.assign({}, o));
+ const mineLvl = mineTierOf(i);
+ const mineSpec = upgradeOffer('mines', mineLvl);
+ const wepLvl = weaponPowerLevel(i, widx);
+ const wepSpec = upgradeOffer('weapons', wepLvl);
+ return {
+ index: i,
+ walls: {
+ level: (state.castleworks.walls || 0),
+ hp: WALL_HP[state.castleworks.walls || 0] || 0,
+ maxCastleHp: state.maxCastleHp,
+ castleHp: state.castleHp,
+ braces: wallBraceGroup ? wallBraceGroup.children.length : 0,
+ offers: copy('walls')
+ },
+ mines: {
+ level: mineLvl,
+ cap: MINE_CAP,
+ caps: { 1: MINE_CAP, 2: MINE_CAP, 3: MINE_CAP },
+ capNote: 'L2 and L3 keep the L1 hold cap and per-level buy cap of ' + MINE_CAP + '. Drop and select stay the same. The tier only changes this player\'s blast damage and radius.',
+ price: MINE_PRICE,
+ damage: mineSpec ? mineSpec.damage : MINE_BLAST_DMG,
+ radius: mineSpec ? mineSpec.radius : MINE_BLAST_RADIUS,
+ offers: copy('mines')
+ },
+ weapons: {
+ level: wepLvl,
+ mk: w ? w.tier : 1,
+ mkCost: w ? (45 * w.tier) : 45,
+ mkCap: 10,
+ id: w ? w.def.id : '',
+ weaponIndex: widx,
+ mult: wepSpec ? wepSpec.mult : 1,
+ offers: copy('weapons')
+ }
+ };
+ }
+ function buyUpgrade(index, kind, level) {
+ const i = index | 0;
+ const lvl = level | 0;
+ const silverNow = () => state.silver;
+ if (i < 0 || i > 3 || (i > 0 && !actorEp(i))) {
+ return { ok: false, reason: 'no-player', silver: silverNow(), level: 0, spent: 0, kind: kind || '' };
+ }
+ if (kind !== 'walls' && kind !== 'mines' && kind !== 'weapons') {
+ return { ok: false, reason: 'bad-kind', silver: silverNow(), level: 0, spent: 0, kind: kind || '' };
+ }
+ const offer = upgradeOffer(kind, lvl);
+ const cur = kind === 'walls' ? (state.castleworks.walls || 0) : (kind === 'mines' ? mineTierOf(i) : weaponPowerLevel(i, equippedWeaponIndex(i)));
+ if (!offer) return { ok: false, reason: 'level', silver: silverNow(), level: cur, spent: 0, kind: kind, price: 0 };
+ if (lvl <= cur) return { ok: false, reason: 'rank', silver: silverNow(), level: cur, spent: 0, kind: kind, price: offer.price };
+ if (!canAfford(i, offer.price)) return { ok: false, reason: 'silver', silver: silverNow(), level: cur, spent: 0, kind: kind, price: offer.price };
+ const before = state.silver;
+ const snap = walletSnapshot();
+ if (!spendSilver(i, offer.price)) return { ok: false, reason: 'silver', silver: silverNow(), level: cur, spent: 0, kind: kind, price: offer.price };
+ let applied = false;
+ if (kind === 'walls') applied = applyWallTier(lvl);
+ else if (kind === 'mines') applied = applyMineTier(i, lvl);
+ else applied = applyWeaponPower(i, equippedWeaponIndex(i), lvl);
+ if (!applied) {
+ restoreWalletSnapshot(snap);
+ return { ok: false, reason: 'rank', silver: state.silver, level: cur, spent: 0, kind: kind, price: offer.price };
+ }
+ updateHUD();
+ updateSplitHUD();
+ if (state.shopOpen) renderShop(document.getElementById('shop-screen'), shopperIndex, currentShopTab);
+ for (let s = 0; s < 4; s++) {
+ const session = splitShops[s];
+ if (session && session.open && session.root) renderShop(session.root, session.index, session.tab || 'weapons');
+ }
+ const now = kind === 'walls' ? (state.castleworks.walls || 0) : (kind === 'mines' ? mineTierOf(i) : weaponPowerLevel(i, equippedWeaponIndex(i)));
+ return { ok: true, reason: '', silver: state.silver, level: now, spent: before - state.silver, kind: kind, price: offer.price };
+ }
  const MINE_DROP_CODES = ['KeyV', 'Numpad1', 'KeyU', 'KeyO'];
  const MINE_SELECT_CODES = ['KeyM', 'Numpad2', 'KeyI', 'KeyP'];
  const mineKeyPrev = [{ d: false, s: false }, { d: false, s: false }, { d: false, s: false }, { d: false, s: false }];
@@ -6890,6 +7751,84 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  mesh.material = mat;
  return mat;
  }
+ function nightTheme(id) {
+ const key = themeKey(id || themeId());
+ return key === 'halloween' || key === 'haunted';
+ }
+ function glowHexFor(typeKey) {
+ if (typeKey === 'stalker') return 0x84cc16;
+ if (typeKey === 'sprinter') return 0xc084fc;
+ if (typeKey === 'brute') return 0xf97316;
+ if (typeKey === 'zigzag') return 0xfacc15;
+ if (typeKey === 'bomber') return 0xef4444;
+ if (typeKey === 'shielder') return 0x38bdf8;
+ if (typeKey === 'splitter') return 0xa3e635;
+ if (typeKey === 'shadowling') return 0x7c3aed;
+ if (typeKey === 'splitling') return 0x6d28d9;
+ if (typeKey === 'gargoyle') return 0x94a3b8;
+ if (typeKey === 'golem') return 0xfb923c;
+ if (typeKey === 'warden') return 0x67e8f9;
+ if (typeKey === 'matron') return 0xf43f5e;
+ if (typeKey === 'wraith') return 0xc4b5fd;
+ if (typeKey === 'horseman') return 0xf97316;
+ if (typeKey === 'santa') return 0xf87171;
+ if (typeKey === 'krampus') return 0xfacc15;
+ if (typeKey === 'leprechaun') return 0x4ade80;
+ if (typeKey === 'bunny') return 0xf9a8d4;
+ if (typeKey === 'uncle') return 0xf87171;
+ return 0xf97316;
+ }
+ function monsterGlow(theme) {
+ const id = themeKey(theme || themeId());
+ const night = nightTheme(id);
+ return { theme: id, night: night, glow: night };
+ }
+ function applyMonsterGlow(m) {
+ if (!m || !m.mesh) return;
+ const night = nightTheme(themeId());
+ const hex = glowHexFor(m.typeKey);
+ m.emissiveOn = !!night;
+ m.glowColor = night ? hex : 0;
+ const eyeMat = m.mesh.userData && m.mesh.userData.eyeMat;
+ m.mesh.traverse(obj => {
+ if (!obj.isMesh || !obj.material || Array.isArray(obj.material)) return;
+ if (obj.userData && (obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist)) return;
+ const mat0 = obj.material;
+ if (mat0.emissive) {
+ const cur = mat0.emissive.getHex();
+ if (!night) {
+ if (!cur) return;
+ const owned = ownMat(obj);
+ owned.emissive.setHex(0x000000);
+ owned.emissiveIntensity = 0;
+ return;
+ }
+ const owned = ownMat(obj);
+ owned.emissive.setHex(hex);
+ owned.emissiveIntensity = (obj.userData && obj.userData.isHead) ? 0.95 : 0.48;
+ } else if (eyeMat && mat0 === eyeMat) {
+ if (night) mat0.color.setHex(hex);
+ else if (m.base && m.base.eyeCol != null) mat0.color.setHex(m.base.eyeCol);
+ }
+ });
+ }
+ function refreshAllMonsterGlow() {
+ for (let i = 0; i < monsters.length; i++) applyMonsterGlow(monsters[i]);
+ }
+ function foeGlow(index) {
+ const m = monsters[index | 0];
+ if (!m || !m.mesh) return null;
+ let hex = 0;
+ let intensity = 0;
+ m.mesh.traverse(obj => {
+ if (!obj.isMesh || !obj.material || !obj.material.emissive) return;
+ if (obj.userData && (obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist)) return;
+ const e = obj.material.emissive.getHex();
+ const inten = obj.material.emissiveIntensity || 0;
+ if (e !== 0 && inten > 0 && inten >= intensity) { hex = e; intensity = inten; }
+ });
+ return { emissiveOn: hex !== 0 && intensity > 0, glow: m.glowColor || 0, hex: hex, intensity: intensity, night: nightTheme(themeId()), type: m.typeKey || '' };
+ }
  function disposeObject3D(obj) {
  if (!obj) return;
  obj.traverse(child => {
@@ -6933,7 +7872,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  tracers.push({ line, life: 0.07 });
  }
 
- function triggerExplosion(pos, radius, maxDmg) {
+ function triggerExplosion(pos, radius, maxDmg, attackerIndex) {
  playExplosion();
  spawnVoxelBurst(pos, 0xf97316, 22, 8.5);
  spawnVoxelBurst(pos, 0xfef08a, 14, 6.5);
@@ -6944,7 +7883,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const d = m.mesh.position.distanceTo(pos);
  if (d <= radius) {
  const falloff = 1 - (d / radius) * 0.55;
- damageMonster(m, Math.round(maxDmg * falloff), m.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false);
+ damageMonster(m, Math.round(maxDmg * falloff), m.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false, attackerIndex);
  }
  }
  }
@@ -7103,6 +8042,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  function mineStatus(index) {
  const b = mineBag(index);
  if (!b) return null;
+ const tier = mineTierOf(index);
+ const spec = upgradeOffer('mines', tier);
  return {
  held: b.mines || 0,
  bought: mineBoughtCount(b),
@@ -7110,6 +8051,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  price: MINE_PRICE,
  selected: !!b.minesSelected,
  level: state.level,
+ tier: tier,
+ damage: spec ? spec.damage : MINE_BLAST_DMG,
+ radius: spec ? spec.radius : MINE_BLAST_RADIUS,
+ caps: { 1: MINE_CAP, 2: MINE_CAP, 3: MINE_CAP },
  armDelay: MINE_ARM_SEC
  };
  }
@@ -7123,24 +8068,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (typeof isViewportShopOpen === 'function' && isViewportShopOpen(index)) return false;
  return true;
  }
- function mineDropLabel(index) {
- const fixed = ['V', 'Num1', 'U', 'O'];
- let key = fixed[index] || 'V';
- if (index <= 0) {
- const code = (settings.keybinds && settings.keybinds.dropMine) || 'KeyV';
- key = String(code).replace('Key', '').replace('Digit', '').replace('Numpad', 'Num');
+ function shortBindLabel(code, fallback) {
+ const raw = code || fallback || '';
+ return String(raw).replace(/^Key/, '').replace(/^Digit/, '').replace(/^Numpad/, 'Num');
  }
- return 'DROP MINE [' + key + ' / R3]';
+ function mineDropLabel(index) {
+ const code = (playerKeybinds[index] && playerKeybinds[index].dropMine) || MINE_DROP_CODES[index] || 'KeyV';
+ return 'DROP MINE [' + shortBindLabel(code) + ' / R3]';
  }
  function mineSelectLabel(index, selected) {
- const fixed = ['M', 'Num2', 'I', 'P'];
- let key = fixed[index] || 'M';
- if (index <= 0) {
- const code = (settings.keybinds && settings.keybinds.selectMines) || 'KeyM';
- key = String(code).replace('Key', '').replace('Digit', '').replace('Numpad', 'Num');
- }
+ const code = (playerKeybinds[index] && playerKeybinds[index].selectMines) || MINE_SELECT_CODES[index] || 'KeyM';
  const pad = index <= 0 ? ' / Back' : '';
- return (selected ? 'MINES SELECTED' : 'SELECT MINES') + ' [' + key + pad + ']';
+ return (selected ? 'MINES SELECTED' : 'SELECT MINES') + ' [' + shortBindLabel(code) + pad + ']';
  }
  function buyMines(index, count) {
  const b = mineBag(index);
@@ -7151,8 +8090,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (let i = 0; i < n; i++) {
  if ((b.mines || 0) >= MINE_CAP) { reason = 'held'; break; }
  if (mineBoughtCount(b) >= MINE_CAP) { reason = 'level'; break; }
- if (state.silver < MINE_PRICE) { reason = 'silver'; break; }
- state.silver -= MINE_PRICE;
+ if (!spendSilver(index | 0, MINE_PRICE)) { reason = 'silver'; break; }
  giveMineStock(b);
  got++;
  }
@@ -7209,6 +8147,24 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  new THREE.MeshBasicMaterial({ color: 0xfbbf24 })
  );
  light.position.y = 0.4;
+ const mineTier = mineTierOf(owner);
+ const mineSpec = upgradeOffer('mines', mineTier) || { damage: MINE_BLAST_DMG, radius: MINE_BLAST_RADIUS, level: 1 };
+ if (mineTier >= 2) {
+ const extra = new THREE.Mesh(
+ new THREE.BoxGeometry(0.62, 0.07, 0.62),
+ new THREE.MeshBasicMaterial({ color: mineTier >= 3 ? 0xf97316 : 0xfdba74 })
+ );
+ extra.position.y = 0.34;
+ g.add(extra);
+ }
+ if (mineTier >= 3) {
+ const capMesh = new THREE.Mesh(
+ new THREE.BoxGeometry(0.28, 0.16, 0.28),
+ new THREE.MeshBasicMaterial({ color: 0xef4444 })
+ );
+ capMesh.position.y = 0.5;
+ g.add(capMesh);
+ }
  const label = createFloatingLabelSprite('MINE', '#7f1d1d', '#fee2e2');
  label.position.y = 0.92;
  g.add(body, band, light, label);
@@ -7226,7 +8182,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  owner: owner,
  armed: false,
  arm: MINE_ARM_SEC,
- spent: false
+ spent: false,
+ tier: mineTier,
+ blastRadius: mineSpec.radius,
+ blastDmg: mineSpec.damage
  };
  g.userData.mineId = mine.id;
  placedMines.push(mine);
@@ -7248,6 +8207,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  armed: !!m.armed,
  arm: m.arm,
  owner: m.owner,
+ tier: m.tier || 1,
+ damage: m.blastDmg || MINE_BLAST_DMG,
+ radius: m.blastRadius || MINE_BLAST_RADIUS,
  visible: !!(m.mesh && m.mesh.visible && m.mesh.parent === scene),
  span: mineSpan(m.mesh)
  }));
@@ -7331,7 +8293,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  dropMesh(mine.mesh);
  placedMines.splice(index, 1);
  spawnMineBlast(mine.x, mine.y, mine.z);
- triggerExplosion(pos, MINE_BLAST_RADIUS, MINE_BLAST_DMG);
+ triggerExplosion(pos, mine.blastRadius || MINE_BLAST_RADIUS, mine.blastDmg || MINE_BLAST_DMG, mine.owner);
  }
  function updateMines(dt) {
  for (let i = placedMines.length - 1; i >= 0; i--) {
@@ -7382,8 +8344,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  mineKeyPrev[i].s = false;
  continue;
  }
- const dropCode = i === 0 ? ((settings.keybinds && settings.keybinds.dropMine) || MINE_DROP_CODES[0]) : MINE_DROP_CODES[i];
- const selCode = i === 0 ? ((settings.keybinds && settings.keybinds.selectMines) || MINE_SELECT_CODES[0]) : MINE_SELECT_CODES[i];
+ const dropCode = (playerKeybinds[i] && playerKeybinds[i].dropMine) || MINE_DROP_CODES[i];
+ const selCode = (playerKeybinds[i] && playerKeybinds[i].selectMines) || MINE_SELECT_CODES[i];
  const down = !!keys[dropCode];
  const sel = !!keys[selCode];
  if (down && !mineKeyPrev[i].d) dropMine(i);
@@ -7440,7 +8402,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  g.lookAt(g.position.clone().add(dir));
  g.userData.shotKind = 'arrow';
  scene.add(g);
- const rec = { mesh: g, vel: dir.clone().multiplyScalar(48), type: 'arrow', fuse: 3.0, radius: 5.8, dmg };
+ const rec = { mesh: g, vel: dir.clone().multiplyScalar(48), type: 'arrow', fuse: 3.0, radius: 5.8, dmg, owner: idx };
  tagShot(rec, fromPos, dir);
  projectiles.push(rec);
  }
@@ -7719,7 +8681,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const dmg = Math.round(92 * dmgMult * (isHead ? 1.55 : 1.0));
  damageMonster(m, dmg, hit.point, isHead, riderIndex);
  if (isFire && m.hp > 0) m.burnTimer = 4.5;
- if (isExp) triggerExplosion(hit.point, 4.2, 75);
+ if (isExp) triggerExplosion(hit.point, 4.2, 75, riderIndex);
  pierced++;
  if (pierced >= (isAP ? 5 : 2)) break;
  }
@@ -7769,7 +8731,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  g.lookAt(g.position.clone().add(dir));
  g.userData.shotKind = 'rocket';
  scene.add(g);
- const rec = { mesh: g, vel: dir.clone().multiplyScalar(42), type: 'rocket', fuse: 4.0, radius: 8.5, dmg };
+ const rec = { mesh: g, vel: dir.clone().multiplyScalar(42), type: 'rocket', fuse: 4.0, radius: 8.5, dmg, owner: idx };
  tagShot(rec, fromPos, dir);
  projectiles.push(rec);
  } else if (pType === 'gl_grenade') {
@@ -7780,7 +8742,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  g.lookAt(g.position.clone().add(dir));
  scene.add(g);
  const vel = dir.clone().multiplyScalar(28);
- const rec = { mesh: g, vel, type: 'gl_grenade', fuse: 3.5, radius: 6.5, dmg };
+ const rec = { mesh: g, vel, type: 'gl_grenade', fuse: 3.5, radius: 6.5, dmg, owner: idx };
  tagShot(rec, fromPos, dir);
  projectiles.push(rec);
  } else if (pType === 'mortar') {
@@ -7793,7 +8755,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  g.lookAt(g.position.clone().add(dir));
  scene.add(g);
  const vel = dir.clone().multiplyScalar(34);
- const rec = { mesh: g, vel, type: 'mortar', fuse: 6.0, radius: 11.5, dmg };
+ const rec = { mesh: g, vel, type: 'mortar', fuse: 6.0, radius: 11.5, dmg, owner: idx };
  tagShot(rec, fromPos, dir);
  projectiles.push(rec);
  }
@@ -8486,8 +9448,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  mesh.traverse(obj => {
  if (!obj.isMesh || !obj.material || !obj.material.emissive) return;
  if (obj.userData && obj.userData.isHead) return;
- obj.material.emissive.setHex(base.bodyCol);
- obj.material.emissiveIntensity = 0.42;
+ const owned = ownMat(obj);
+ owned.emissive.setHex(base.bodyCol);
+ owned.emissiveIntensity = 0.42;
  });
  }
  if (opts && opts.meshScale) mesh.scale.setScalar(opts.meshScale / base.scale);
@@ -8582,6 +9545,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  mesh.traverse(obj => { if (obj.isMesh) obj.userData.monster = m; });
  monsters.push(m);
+ applyMonsterGlow(m);
  return m;
  }
 
@@ -8949,11 +9913,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  };
 
  if (d.kind === 'coin') {
- state.silver += d.coinValue;
+ creditWorldCoin(d.coinValue);
  playTone(d.isGold ? 880 : 640, d.isGold ? 1320 : 920, 0.12, 0.14, 'sine');
  updateHUD();
  return;
  } else if (d.kind === 'weapon') {
+ const lootWeapon = state.weapons[d.weaponIdx];
+ const shopCopy = !!(lootWeapon && lootWeapon.def && lootWeapon.def.shopOnly && (weaponHasOwner(d.weaponIdx) || !lootWeapon.unlocked));
  if (isP1) {
  const target = state.weapons[d.weaponIdx];
  if (!target.unlocked) {
@@ -8987,6 +9953,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  syncExtraPlayerFpWeapon(actor);
  showBanner(`🔫 ${actor.label} PICKED UP: ${def.name.toUpperCase()}!`, actor.color);
  }
+ if (shopCopy) noteShopPurchase(actorIndex(actor), d.weaponIdx);
  playTone(520, 920, 0.25, 0.18, 'sine');
  } else if (d.kind === 'ammo') {
  if (isP1) {
@@ -9242,6 +10209,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const castleFx = [];
  const chainJumps = [];
  const pendingStakes = [null, null, null, null];
+ const TRIPWIRE_MAX = 16;
  const kitePlates = [
  { absorbs: 3, breakLeft: 0 },
  { absorbs: 3, breakLeft: 0 },
@@ -9280,8 +10248,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  function onBridgeDeck(x, z) { return z >= -24 && z <= -2 && Math.abs(x) < 4.6; }
  function inMonsterLane(x, z) { return z >= -24 && z <= 4 && Math.abs(x) <= 3.4; }
- function walletText() {
- const base = formatCoins(state.silver);
+ function walletText(index) {
+ const who = (typeof index === 'number') ? (index | 0) : 0;
+ const amount = silverAssignMode ? walletSum() : goldOf(who);
+ const base = formatCoins(amount);
  return state.silverFlash > 0 ? (base + ' −4s') : base;
  }
  function kiteSuffix(index) {
@@ -9298,7 +10268,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return ' • PLATE ' + plate.absorbs;
  }
  function hudWeaponLine(def, mag, reserve, reloading, index) {
- const gunCount = state.weapons.filter(function (wp) { return wp.unlocked; }).length;
+ const gunCount = cycleIdsFor(index || 0).length;
  let mid;
  if (def.tool === 'flint') mid = '−4s';
  else if (def.noMag) mid = '∞';
@@ -9355,7 +10325,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  const isAP = !!(spec && spec.type === 'ap' && spec.timer > 0);
  const tier = (w && w.tier) || 1;
- return (1 + (tier - 1) * 0.24) * (buffs.doubleDmg > 0 ? 2 : 1) * (isAP ? 1.6 : 1) * (att.extBarrel ? 1.22 : 1);
+ const widx = state.weapons.indexOf(w);
+ return (1 + (tier - 1) * 0.24) * (buffs.doubleDmg > 0 ? 2 : 1) * (isAP ? 1.6 : 1) * (att.extBarrel ? 1.22 : 1) * weaponPowerMult(index | 0, widx);
  }
  function aimGroundPoint(index) {
  if (forcedAimPoint) {
@@ -9373,6 +10344,45 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (p.y <= gy + 0.05) return { x: p.x, y: gy, z: p.z };
  }
  return { x: origin.x + dir.x * 8, y: getGroundHeight(origin.x, origin.z), z: origin.z + dir.z * 8 };
+ }
+ function tripwireAimPoint(index) {
+ if (forcedAimPoint) {
+ const x = forcedAimPoint.x, z = forcedAimPoint.z;
+ return { x: x, y: getGroundHeight(x, z), z: z };
+ }
+ const ctx = shotContext(index);
+ if (!ctx) return { x: 0, y: 0, z: 0 };
+ const origin = ctx.cam.position.clone();
+ const dir = aimDirOf(ctx);
+ const step = 0.28;
+ const maxDist = 22;
+ let prevAbove = origin.y >= getGroundHeight(origin.x, origin.z) - 0.02;
+ const steps = Math.ceil(maxDist / step);
+ for (let i = 1; i <= steps; i++) {
+ const dist = i * step;
+ const p = origin.clone().addScaledVector(dir, dist);
+ const above = p.y >= getGroundHeight(p.x, p.z) - 0.02;
+ if (prevAbove && !above) {
+ let lo = (i - 1) * step;
+ let hi = dist;
+ for (let b = 0; b < 8; b++) {
+ const mid = (lo + hi) * 0.5;
+ const q = origin.clone().addScaledVector(dir, mid);
+ if (q.y >= getGroundHeight(q.x, q.z) - 0.02) lo = mid;
+ else hi = mid;
+ }
+ const hit = origin.clone().addScaledVector(dir, hi);
+ return { x: hit.x, y: getGroundHeight(hit.x, hit.z), z: hit.z };
+ }
+ prevAbove = above;
+ }
+ const flat = new THREE.Vector3(dir.x, 0, dir.z);
+ if (flat.lengthSq() < 1e-6) flat.set(0, 0, -1);
+ flat.normalize();
+ const reach = 6;
+ const x = origin.x + flat.x * reach;
+ const z = origin.z + flat.z * reach;
+ return { x: x, y: getGroundHeight(x, z), z: z };
  }
  function monsterFromObject(obj) {
  let o = obj;
@@ -9487,11 +10497,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const def = w.def;
  if ((def.tool === 'storm' || def.tool === 'flint') && (toolLock[index] || 0) > 0) return false;
  if (def.tool === 'flint') {
- if (state.silver < 4) {
+ if (!canAfford(index, 4) || !spendSilver(index, 4)) {
  playTone(140, 90, 0.05, 0.1, 'square');
  return false;
  }
- state.silver -= 4;
  state.silverFlash = 0.75;
  showBanner('−4s', '#fef08a');
  const dealt = Math.round(def.damage * dmgMultOf(w, index));
@@ -10751,6 +11760,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  scene.add(mesh);
  return mesh;
  }
+ function tripwireReject(x, z) {
+ if (unplayableWater(x, z)) return true;
+ if (!insideWalkable(x, z)) return true;
+ return false;
+ }
  function plantTripwire(index, spent) {
  const ctx = shotContext(index);
  if (ctx) {
@@ -10758,22 +11772,23 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const dir = aimDirOf(ctx);
  spawnTravelRound(origin, origin.clone().addScaledVector(dir, 16), 0xfacc15, 'spool');
  }
- const pt = aimGroundPoint(index);
- if (inMonsterLane(pt.x, pt.z)) { showRejectedSpool(index, pt); refundShot(index, spent); return; }
+ const pt = tripwireAimPoint(index);
+ if (tripwireReject(pt.x, pt.z)) { showRejectedSpool(index, pt); refundShot(index, spent); return { ok: false, reason: 'reject', x: pt.x, z: pt.z }; }
  const pending = pendingStakes[index];
  if (!pending) {
- if (wiresOwned(index) >= 3 || castleWires.length >= 8) { showRejectedSpool(index, pt); refundShot(index, spent); return; }
+ if (wiresOwned(index) >= 3 || castleWires.length >= 8) { showRejectedSpool(index, pt); refundShot(index, spent); return { ok: false, reason: 'cap', x: pt.x, z: pt.z }; }
  pendingStakes[index] = { x: pt.x, z: pt.z, mesh: makeStake(pt.x, pt.z) };
  refundShot(index, spent);
- return;
+ return { ok: true, phase: 'anchor', x: pt.x, z: pt.z };
  }
  const dist = Math.hypot(pt.x - pending.x, pt.z - pending.z);
- if (dist > 8 || dist < 0.25) { showRejectedSpool(index, pt); refundShot(index, spent); return; }
- if (wiresOwned(index) >= 3 || castleWires.length >= 8) { showRejectedSpool(index, pt); refundShot(index, spent); return; }
+ if (dist > TRIPWIRE_MAX || dist < 0.25) { showRejectedSpool(index, pt); refundShot(index, spent); return { ok: false, reason: 'range', dist: dist, x: pt.x, z: pt.z }; }
+ if (wiresOwned(index) >= 3 || castleWires.length >= 8) { showRejectedSpool(index, pt); refundShot(index, spent); return { ok: false, reason: 'cap', x: pt.x, z: pt.z }; }
  const bMesh = makeStake(pt.x, pt.z);
  const line = makeWireSpan(pending.x, pending.z, pt.x, pt.z);
- castleWires.push({ ax: pending.x, az: pending.z, bx: pt.x, bz: pt.z, owner: index, mesh: line, aMesh: pending.mesh, bMesh: bMesh });
+ castleWires.push({ ax: pending.x, az: pending.z, bx: pt.x, bz: pt.z, owner: index, mesh: line, aMesh: pending.mesh, bMesh: bMesh, tripped: false });
  pendingStakes[index] = null;
+ return { ok: true, phase: 'wire', dist: dist, ax: castleWires[castleWires.length - 1].ax, az: castleWires[castleWires.length - 1].az, bx: pt.x, bz: pt.z };
  }
  function segmentsCross(ax, az, bx, bz, cx, cz, dx, dz) {
  const rpx = bx - ax, rpz = bz - az;
@@ -10805,7 +11820,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (o.hp > 0 && Math.hypot(o.mesh.position.x - x, o.mesh.position.z - z) <= 2.2) victims.push(o);
  }
  for (let k = 0; k < victims.length; k++) {
- damageMonster(victims[k], 90, victims[k].mesh.position.clone(), false);
+ damageMonster(victims[k], 90, victims[k].mesh.position.clone(), false, w.owner);
  }
  const owner = w.owner || 0;
  grantXP(12);
@@ -10935,7 +11950,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.castleworks.shrine = 0;
  state.castleworks.bell = 0;
  state.castleworks.spikes = 0;
- state.maxCastleHp = 100;
+ state.castleworks.walls = 0;
+ state.maxCastleHp = castleMaxFromWorks();
  state.silverFlash = 0;
  for (let i = 0; i < 4; i++) {
  const k = kitsFor(i);
@@ -10945,6 +11961,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  clearCastleGadgets();
  syncRoadSpikeMeshes();
+ syncWallBraces();
  }
  function restoreCastleworks(data) {
  clearCastleGadgets();
@@ -10954,6 +11971,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.castleworks.shrine = Math.max(0, Math.min(1, Math.floor(cw.shrine || 0)));
  state.castleworks.bell = Math.max(0, Math.min(1, Math.floor(cw.bell || 0)));
  state.castleworks.spikes = Math.max(0, Math.min(2, Math.floor(cw.spikes || 0)));
+ state.castleworks.walls = Math.max(0, Math.min(3, Math.floor(cw.walls || 0)));
  const kits = (data && Array.isArray(data.partyKits)) ? data.partyKits : [];
  for (let i = 0; i < 4; i++) {
  const src = kits[i] || {};
@@ -10962,14 +11980,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  dst.dashOil = !!src.dashOil;
  dst.spotter = !!src.spotter;
  }
- state.maxCastleHp = 100 + 25 * state.castleworks.gate;
+ state.maxCastleHp = castleMaxFromWorks();
  state.silverFlash = 0;
  syncRoadSpikeMeshes();
+ syncWallBraces();
  }
  function buyCastleworks(key, shopper) {
  if (key === 'gate' && state.castleworks.gate < 3) {
  state.castleworks.gate++;
- state.maxCastleHp = 100 + 25 * state.castleworks.gate;
+ state.maxCastleHp = castleMaxFromWorks();
  state.castleHp = Math.min(state.maxCastleHp, state.castleHp + 25);
  } else if (key === 'well' && state.castleworks.well < 2) state.castleworks.well++;
  else if (key === 'shrine' && !state.castleworks.shrine) state.castleworks.shrine = 1;
@@ -11251,7 +12270,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const dmgMult = (1 + (w.tier - 1) * 0.24)
  * (state.buffs.doubleDmg > 0 ? 2.0 : 1.0)
  * (isAP ? 1.6 : 1.0)
- * (att.extBarrel ? 1.22 : 1.0);
+ * (att.extBarrel ? 1.22 : 1.0)
+ * weaponPowerMult(0, state.weapons.indexOf(w));
 
  if (w.def.explosiveArrow) {
  fireExplosiveArrow(Math.round(w.def.damage * dmgMult));
@@ -11354,7 +12374,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  spawnVoxelBurst(hit.point, 0xf59e0b, 14, 6.5);
  showBanner('🛡️ SHIELD SHATTERED!', '#fbbf24');
  }
- if (isExp) triggerExplosion(hit.point, 4.2, Math.round(w.def.damage * dmgMult * 0.75));
+ if (isExp) triggerExplosion(hit.point, 4.2, Math.round(w.def.damage * dmgMult * 0.75), 0);
  break;
  }
  const isHead = !!hit.object.userData.isHead;
@@ -11362,7 +12382,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  damageMonster(m, dmg, hit.point, isHead, 0);
 
  if (isFire && m.hp > 0) m.burnTimer = 4.5;
- if (isExp) triggerExplosion(hit.point, 4.2, Math.round(dmg * 0.75));
+ if (isExp) triggerExplosion(hit.point, 4.2, Math.round(dmg * 0.75), 0);
 
  pierced++;
  if (pierced >= maxPierce) break;
@@ -11376,7 +12396,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  endPt = raycaster.ray.origin.clone().addScaledVector(raycaster.ray.direction, 0.45);
  damageMonster(contained.m, dmg, endPt, isHead, 0);
  if (isFire && contained.m.hp > 0) contained.m.burnTimer = 4.5;
- if (isExp) triggerExplosion(endPt, 4.2, Math.round(dmg * 0.75));
+ if (isExp) triggerExplosion(endPt, 4.2, Math.round(dmg * 0.75), 0);
  }
  }
 
@@ -13109,6 +14129,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  state.kills++;
+ if (typeof attackerIndex === 'number' && attackerIndex >= 0) noteRunKill(attackerIndex);
  grantXP(m.base.xp);
  updateHUD();
  if (m.bossKind === 'uncle' || m.typeKey === 'uncle') {
@@ -13222,7 +14243,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  dashEl.style.color = '#4ade80';
  }
  }
- document.getElementById('coin-text').textContent = walletText();
+ document.getElementById('coin-text').textContent = walletText(0);
 
  const w = curWep();
  const maxMags = getMaxMags(state.level);
@@ -13382,7 +14403,178 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return ep.hp;
  }
 
+ const HIGH_SCORE_KEY = 'bastionBellHighScore';
+ const runKills = [0, 0, 0, 0];
+ // Silver collected this run (10 silver = 1 gold). Not the current pocket.
+ const runGold = [0, 0, 0, 0];
+ function resetRunStats() {
+ for (let i = 0; i < 4; i++) { runKills[i] = 0; runGold[i] = 0; }
+ }
+ function noteRunKill(index) {
+ const i = index | 0;
+ if (i < 0 || i > 3) return;
+ runKills[i]++;
+ }
+ function noteRunGold(index, amount) {
+ const n = Math.floor(Number(amount) || 0);
+ if (n <= 0) return;
+ const i = index | 0;
+ if (i < 0 || i > 3) return;
+ runGold[i] += n;
+ }
+ function actorIndex(actor) {
+ if (!actor || actor.isP1 || typeof actor.index !== 'number') return 0;
+ const i = actor.index | 0;
+ return (i >= 0 && i <= 3) ? i : 0;
+ }
+ function rosterCount() {
+ const n = (typeof numPlayers === 'number' && numPlayers > 0) ? numPlayers : 1;
+ return Math.max(1, Math.min(4, n | 0));
+ }
+ function waveReached() {
+ return Math.max(1, Math.floor(Number(state.wave) || 0));
+ }
+ function highScoreText(row) {
+ if (!row) return 'no high score yet';
+ return 'Wave ' + row.wave + ' · ' + row.kills + ' kills · ' + formatCoins(row.goldEarned);
+ }
+ function readHighScore() {
+ try {
+ const raw = localStorage.getItem(HIGH_SCORE_KEY);
+ if (!raw) return null;
+ const data = JSON.parse(raw);
+ if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+ const wave = Number(data.wave);
+ const kills = Number(data.kills);
+ const gold = Number(data.goldEarned);
+ if (!Number.isFinite(wave) || !Number.isFinite(kills) || !Number.isFinite(gold)) return null;
+ const waveN = Math.floor(wave);
+ const killsN = Math.floor(kills);
+ const goldN = Math.floor(gold);
+ if (waveN < 1 || killsN < 0 || goldN < 0) return null;
+ const row = { wave: waveN, kills: killsN, goldEarned: goldN };
+ row.goldText = formatCoins(goldN);
+ row.text = highScoreText(row);
+ return row;
+ } catch (err) {
+ return null;
+ }
+ }
+ function highScoreBeats(next, prev) {
+ if (next.wave !== prev.wave) return next.wave > prev.wave;
+ if (next.kills !== prev.kills) return next.kills > prev.kills;
+ return next.goldEarned > prev.goldEarned;
+ }
+ function partyGoldEarned() {
+ const n = rosterCount();
+ let gold = 0;
+ for (let i = 0; i < n; i++) gold += runGold[i] || 0;
+ return gold;
+ }
+ function commitHighScore(wave, kills, goldEarned) {
+ const next = {
+ wave: Math.max(1, wave | 0),
+ kills: Math.max(0, kills | 0),
+ goldEarned: Math.max(0, goldEarned | 0)
+ };
+ const prev = readHighScore();
+ if (prev && !highScoreBeats(next, prev)) return prev;
+ try {
+ localStorage.setItem(HIGH_SCORE_KEY, JSON.stringify({
+ wave: next.wave,
+ kills: next.kills,
+ goldEarned: next.goldEarned
+ }));
+ } catch (err) {}
+ return readHighScore() || prev;
+ }
+ function collectRunStats() {
+ const n = rosterCount();
+ const wave = waveReached();
+ const players = [];
+ let gold = 0;
+ for (let i = 0; i < n; i++) {
+ const earned = runGold[i] || 0;
+ gold += earned;
+ players.push({
+ index: i,
+ label: 'P' + (i + 1),
+ kills: runKills[i] || 0,
+ goldEarned: earned,
+ goldText: formatCoins(earned),
+ waves: wave
+ });
+ }
+ return {
+ players: players,
+ totals: {
+ kills: state.kills,
+ goldEarned: gold,
+ goldText: formatCoins(gold),
+ wave: wave,
+ waves: wave
+ },
+ highScore: readHighScore()
+ };
+ }
+ function paintHighScoreLabel(row) {
+ const text = row && row.text ? row.text : 'no high score yet';
+ const go = document.getElementById('go-high-score');
+ if (go) go.textContent = text;
+ const start = document.getElementById('start-high-score');
+ if (start) start.textContent = 'High score: ' + text;
+ }
+ function paintRunRoster(scoreRow) {
+ const stats = collectRunStats();
+ if (arguments.length) stats.highScore = scoreRow || null;
+ paintHighScoreLabel(stats.highScore);
+ const box = document.getElementById('go-players');
+ if (!box) return stats;
+ while (box.firstChild) box.removeChild(box.firstChild);
+ for (let i = 0; i < stats.players.length; i++) {
+ const p = stats.players[i];
+ const el = document.createElement('div');
+ el.className = 'info-box';
+ el.dataset.player = String(p.index);
+ el.dataset.kills = String(p.kills);
+ el.dataset.gold = String(p.goldEarned);
+ el.dataset.waves = String(p.waves);
+ const name = document.createElement('strong');
+ name.textContent = p.label;
+ const kills = document.createElement('span');
+ kills.style.display = 'block';
+ kills.textContent = 'Kills ' + p.kills;
+ const gold = document.createElement('span');
+ gold.style.display = 'block';
+ gold.textContent = 'Gold earned ' + p.goldText;
+ const waves = document.createElement('span');
+ waves.style.display = 'block';
+ waves.textContent = 'Waves ' + p.waves;
+ el.appendChild(name);
+ el.appendChild(kills);
+ el.appendChild(gold);
+ el.appendChild(waves);
+ box.appendChild(el);
+ }
+ return stats;
+ }
+ function publicRunStats() {
+ const stats = collectRunStats();
+ paintHighScoreLabel(stats.highScore);
+ return stats;
+ }
+ function applyRunStat(index, patch) {
+ const i = index | 0;
+ if (i >= 0 && i <= 3 && patch && typeof patch === 'object') {
+ if (patch.kills != null && Number.isFinite(Number(patch.kills))) runKills[i] = Math.max(0, Math.floor(Number(patch.kills)));
+ if (patch.goldEarned != null && Number.isFinite(Number(patch.goldEarned))) runGold[i] = Math.max(0, Math.floor(Number(patch.goldEarned)));
+ }
+ return publicRunStats();
+ }
+
  function triggerGameOver(reason) {
+ closeGift();
+ endPlayerPause();
  state.running = false;
  state.gameOver = true;
  closeAllViewportShops();
@@ -13390,7 +14582,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  setScoped(false);
  if (currentWeaponMesh) currentWeaponMesh.visible = true;
  if (document.pointerLockElement) document.exitPointerLock();
- const waveNum = Math.max(1, state.wave);
+ const waveNum = waveReached();
  document.getElementById('go-reason').textContent = reason;
  document.getElementById('go-retry-prompt').textContent = `Would you like to try Wave ${waveNum} again?`;
  document.getElementById('retry-wave-btn').textContent = `🔄 Try Wave ${waveNum} Again`;
@@ -13398,10 +14590,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  document.getElementById('go-kills').textContent = state.kills;
  document.getElementById('go-level').textContent = state.level;
  document.getElementById('go-weapon').textContent = `${state.weapons.filter(w => w.unlocked).length} / ${state.weapons.length}`;
+ const saved = commitHighScore(waveNum, Math.max(0, Math.floor(Number(state.kills) || 0)), partyGoldEarned());
+ paintRunRoster(saved);
  document.getElementById('gameover-screen').style.display = 'flex';
  }
 
  function resetGame() {
+ closeGift();
+ endPlayerPause();
  closeAllViewportShops();
  state.shopOpen = false;
  const shopEl = document.getElementById('shop-screen');
@@ -13423,6 +14619,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.hp = 100; state.maxHp = 100;
  state.level = 1; state.xp = 0; state.xpToNext = 60;
  state.kills = 0; state.silver = 0; state.castleHp = 100;
+ resetRunStats();
  resetCastleworks();
  state.castleHp = Math.min(state.maxCastleHp, 100);
  state.grenades = { frag: 2, flame: 1, thermite: 1 };
@@ -13430,8 +14627,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.mines = 0;
  state.minesBought = 0;
  state.minesBoughtLevel = 1;
+ state.mineTier = 1;
  state.minesSelected = false;
  state.mineFireLatch = false;
+ for (let pi = 0; pi < 4; pi++) weaponPower[pi].length = 0;
+ extraPlayers.forEach(ep => { ep.mineTier = 1; });
  state.wave = 0; state.inWave = false;
  state.intermissionTimer = 120;
  state.toSpawn = [];
@@ -13449,6 +14649,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  initWeapons();
  if (hasStartedRun) startCourtyardRun(true);
+ healPartyFull();
+ captureLevelBoot();
  updateHUD();
  }
 
@@ -13488,12 +14690,20 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  pollGamepadsOnce();
  const dt = forcedDt || Math.min(0.05, clock.getDelta());
  simTime += dt;
+ pollPlayerPause();
+ if (playerPaused) {
+ updateMenuGamepadNav(dt);
+ updateP1Gamepad(dt);
+ if (debugFastStep) updateViewportShops(dt);
+ else if (!headlessDriver && !debugSkipRender && !debugHoldRender) renderSplitScreens();
+ return;
+ }
  tickPlayerChill(dt);
  updateCastleSystems(dt, !!debugFastStep);
  if (debugFastStep) {
  updateMenuGamepadNav(dt);
  updateP1Gamepad(dt);
- if (state.running) {
+ if (state.running && !playerPaused) {
  updateExtraPlayers(dt);
  updateDrops(dt);
  updateCasings(dt);
@@ -13510,10 +14720,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
 
  // Enhanced Snow Weather (Light / Heavy / Blizzard with wind gusts)
- if (settings.snow > 0) {
+ const snowLevel = snowDrawLevel();
+ if (snowLevel > 0) {
  const t = clock.elapsedTime;
- const windX = Math.sin(t * 0.35) * (settings.snow === 3 ? 3.2 : 1.1);
- const fallSpd = (settings.snow === 3 ? 4.8 : (settings.snow === 2 ? 2.8 : 1.7)) * 0.5;
+ const windX = Math.sin(t * 0.35) * (snowLevel === 3 ? 3.2 : 1.1);
+ const fallSpd = (snowLevel === 3 ? 4.8 : (snowLevel === 2 ? 2.8 : 1.7)) * 0.5;
  const sPos = snowPoints.geometry.attributes.position.array;
  for (let i = 0; i < snowCount; i++) {
  sPos[i * 3 + 1] -= dt * fallSpd;
@@ -13725,7 +14936,6 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  };
  if (!blocked(nextX, player.pos.z) && !isWaterOrBridgeDropZone(nextX, player.pos.z) && !fieldWaterAt(nextX, player.pos.z)) player.pos.x = nextX;
  if (!blocked(player.pos.x, nextZ) && !isWaterOrBridgeDropZone(player.pos.x, nextZ) && !fieldWaterAt(player.pos.x, nextZ)) player.pos.z = nextZ;
- warpPlayerIfFallen(player.pos, player.vel, 'P1', PLAYER_HEX[0]);
 
  if (keys[settings.keybinds.jump] && player.onGround && !isViewportShopOpen(0)) {
  player.vel.y = 7.4;
@@ -13734,11 +14944,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  player.vel.y -= 20.5 * dt;
  player.pos.y += player.vel.y * dt;
 
+ if (warpPlayerIfFallen(player.pos, player.vel, 'P1', PLAYER_HEX[0])) {
+ player.onGround = true;
+ } else {
  const floorY = getGroundHeight(player.pos.x, player.pos.z) + player.eyeHeight;
  if (player.pos.y <= floorY) {
  player.pos.y = floorY;
  player.vel.y = 0;
  player.onGround = true;
+ }
  }
 
  // Player Root Motion: stride-driven vertical bob & subtle lateral roll
@@ -13855,7 +15069,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  if (hitMonster) {
  if (p.gType === 'frag') {
- triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg);
+ triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
  } else if (p.gType === 'flame') {
  spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
  } else if (p.gType === 'thermite') {
@@ -13885,7 +15099,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  if (p.fuse <= 0) {
- if (p.gType === 'frag') triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg);
+ if (p.gType === 'frag') triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
  else if (p.gType === 'flame') spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
  else stickThermite(null, p.mesh.position.clone(), p.owner);
  scene.remove(p.mesh);
@@ -13898,7 +15112,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
  if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
  const impactPos = p.mesh.position.clone();
- triggerExplosion(impactPos, p.radius, p.dmg);
+ triggerExplosion(impactPos, p.radius, p.dmg, p.owner);
  spawnFireZone(impactPos, 5.2, 6.0);
  scene.remove(p.mesh);
  disposeObject3D(p.mesh);
@@ -13916,7 +15130,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (p.type === 'mortar' && Math.random() < 0.65) spawnVoxelBurst(p.mesh.position.clone(), 0xf97316, 1, 1.8);
  const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
  if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
- triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg);
+ triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
  if (p.type === 'mortar') spawnFireZone(p.mesh.position.clone(), 4.5, 4.0);
  scene.remove(p.mesh);
  projectiles.splice(i, 1);
@@ -13925,7 +15139,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  // Explosive Arrow
  const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
  if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
- triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg);
+ triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
  scene.remove(p.mesh);
  projectiles.splice(i, 1);
  }
@@ -14472,6 +15686,108 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const SAVE_KEY = 'bastionBellSaveV8';
  let hasStartedRun = false;
  let waveStartSnapshot = null;
+ var levelBootSnapshot = null;
+ liveLevelReady = true;
+
+ function cloneSave(data) {
+ try { return JSON.parse(JSON.stringify(data)); } catch (e) { return data; }
+ }
+ function rememberLiveLevel() {
+ if (!liveLevelReady) return;
+ const theme = themeId();
+ const seed = (courtyard && courtyard.code) ? courtyard.code : '';
+ if (waveStartSnapshot) {
+ waveStartSnapshot.theme = theme;
+ waveStartSnapshot.courtyardSeed = seed;
+ }
+ if (levelBootSnapshot) {
+ levelBootSnapshot.theme = theme;
+ levelBootSnapshot.courtyardSeed = seed;
+ }
+ }
+ function captureLevelBoot() {
+ levelBootSnapshot = buildSaveData();
+ levelBootSnapshot.retryWaveNum = 1;
+ waveStartSnapshot = cloneSave(levelBootSnapshot);
+ rememberLiveLevel();
+ }
+ function healPartyFull() {
+ state.hp = state.maxHp;
+ player.pos.set(0, 4.72, 0.5);
+ player.vel.set(0, 0, 0);
+ player.yaw = 0;
+ player.pitch = -0.04;
+ const spots = [[-2.4, 4.72, 0.8], [2.4, 4.72, 0.8], [0, 4.72, 2.6]];
+ for (let i = 0; i < extraPlayers.length; i++) {
+ const ep = extraPlayers[i];
+ if (!ep) continue;
+ ep.maxHp = state.maxHp;
+ ep.hp = ep.maxHp;
+ if (ep.vel) ep.vel.set(0, 0, 0);
+ const spot = spots[i] || spots[0];
+ if (ep.pos) ep.pos.set(spot[0], spot[1], spot[2]);
+ ep.dashTimer = 0;
+ ep.dashCooldown = 0;
+ }
+ }
+ function levelStatus() {
+ let living = 0;
+ for (let i = 0; i < monsters.length; i++) if (monsters[i].hp > 0) living++;
+ return {
+ theme: themeId(),
+ seed: (courtyard && courtyard.code) ? courtyard.code : '',
+ choice: selectedThemeChoice,
+ inWave: !!state.inWave,
+ wave: state.wave,
+ hp: state.hp,
+ maxHp: state.maxHp,
+ extraHp: extraPlayers.map(ep => ({ hp: ep.hp, maxHp: ep.maxHp })),
+ monsters: living,
+ monsterCount: monsters.length,
+ projectiles: projectiles.length,
+ silver: state.silver,
+ walls: (state.castleworks && state.castleworks.walls) || 0,
+ gate: state.castleworks.gate,
+ intermission: state.intermissionTimer,
+ toSpawn: state.toSpawn.length,
+ fireZones: fireZones.length,
+ gameOver: !!state.gameOver
+ };
+ }
+ function retryLevel() {
+ const src = waveStartSnapshot || levelBootSnapshot;
+ const data = src ? cloneSave(src) : buildSaveData();
+ if (!data.retryWaveNum) data.retryWaveNum = Math.max(1, state.inWave ? state.wave : ((state.wave || 0) + 1));
+ data.theme = themeId();
+ data.courtyardSeed = (courtyard && courtyard.code) ? courtyard.code : (data.courtyardSeed || '');
+ applySaveData(data, true);
+ const go = document.getElementById('gameover-screen');
+ if (go) go.style.display = 'none';
+ const hud = document.getElementById('hud');
+ if (hud) hud.style.display = 'block';
+ state.running = true;
+ state.gameOver = false;
+ state.inWave = false;
+ state.toSpawn = [];
+ state.spawnMeta = [];
+ state.intermissionTimer = 120;
+ showBanner('RETRYING WAVE ' + (state.wave + 1) + '!', '#ffd166');
+ updateHUD();
+ return levelStatus();
+ }
+ function restartRun() {
+ resetGame();
+ const go = document.getElementById('gameover-screen');
+ if (go) go.style.display = 'none';
+ const hud = document.getElementById('hud');
+ if (hud) hud.style.display = 'block';
+ state.running = true;
+ state.gameOver = false;
+ state.inWave = false;
+ state.toSpawn = [];
+ state.intermissionTimer = 120;
+ return levelStatus();
+ }
 
  function buildSaveData() {
  return {
@@ -14488,16 +15804,22 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  well: state.castleworks.well,
  shrine: state.castleworks.shrine,
  bell: state.castleworks.bell,
- spikes: state.castleworks.spikes
+ spikes: state.castleworks.spikes,
+ walls: state.castleworks.walls || 0
  },
  partyKits: state.partyKits.map(k => ({ bandolier: !!k.bandolier, dashOil: !!k.dashOil, spotter: !!k.spotter })),
  kills: state.kills,
  silver: state.silver,
+ playerSilver: [wallets[0], wallets[1], wallets[2], wallets[3]],
+ silverShared: !!silverAssignMode,
+ weaponOwned: weaponOwned.map(row => (row || []).map(flag => !!flag)),
  grenades: Object.assign({}, state.grenades),
  selectedGrenade: state.selectedGrenade,
  mines: state.mines || 0,
  minesBought: state.minesBought || 0,
  minesBoughtLevel: state.minesBoughtLevel || state.level,
+ mineTier: state.mineTier || 1,
+ weaponPower: (weaponPower[0] || []).map(function (n) { return n || 0; }),
  dual50Inventory: state.dual50Inventory,
  currentWeaponIdx: state.currentWeaponIdx,
  towerPowerCooldown: state.towerPowerCooldown,
@@ -14561,7 +15883,12 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.hp = forRetry ? state.maxHp : clampNum(data.hp, 25, state.maxHp, state.maxHp);
  state.castleHp = forRetry ? state.maxCastleHp : clampNum(data.castleHp, 25, state.maxCastleHp, 100);
  state.kills = Math.floor(clampNum(data.kills, 0, 999999, 0));
+ if (Array.isArray(data.playerSilver)) {
+ silverAssignMode = !!data.silverShared;
+ for (let wi = 0; wi < 4; wi++) wallets[wi] = Math.max(0, Math.floor(Number(data.playerSilver[wi]) || 0));
+ } else {
  state.silver = Math.floor(clampNum(data.silver, 0, 999999, 0));
+ }
  const dg = (data.grenades && typeof data.grenades === 'object') ? data.grenades : {};
  const gcap = grenadeCapFor(0);
  state.grenades = {
@@ -14573,12 +15900,22 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.mines = Math.floor(clampNum(data.mines, 0, MINE_CAP, 0));
  state.minesBought = Math.floor(clampNum(data.minesBought, 0, MINE_CAP, 0));
  state.minesBoughtLevel = Math.floor(clampNum(data.minesBoughtLevel, 1, 999, state.level));
+ state.mineTier = Math.floor(clampNum(data.mineTier, 1, 3, 1));
+ weaponPower[0].length = 0;
+ if (Array.isArray(data.weaponPower)) {
+ for (let wi = 0; wi < data.weaponPower.length; wi++) {
+ const pn = Math.floor(Number(data.weaponPower[wi]) || 0);
+ if (pn >= 2 && pn <= 3) weaponPower[0][wi] = pn;
+ }
+ }
+ for (let pi = 1; pi < 4; pi++) weaponPower[pi].length = 0;
  state.minesSelected = false;
  state.mineFireLatch = false;
  extraPlayers.forEach(ep => {
  ep.mines = 0;
  ep.minesBought = 0;
  ep.minesBoughtLevel = state.level;
+ ep.mineTier = 1;
  ep.minesSelected = false;
  ep.mineFireLatch = false;
  });
@@ -14613,6 +15950,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  });
  }
+ for (let p = 0; p < 4; p++) {
+ weaponOwned[p] = [];
+ if (Array.isArray(data.weaponOwned) && Array.isArray(data.weaponOwned[p])) {
+ for (let wi = 0; wi < data.weaponOwned[p].length; wi++) {
+ if (data.weaponOwned[p][wi]) weaponOwned[p][wi] = true;
+ }
+ }
+ }
  const idx = Math.floor(clampNum(data.currentWeaponIdx, 0, state.weapons.length - 1, 0));
  state.currentWeaponIdx = state.weapons[idx].unlocked ? idx : 0;
  buildWeaponViewmodel(curWep());
@@ -14624,11 +15969,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  state.inWave = false;
  state.toSpawn = [];
  if (forRetry) {
- // Restore wave counter to just before the failed wave and immediately launch it
  const retryWave = Math.max(1, data.retryWaveNum || state.wave || 1);
  state.wave = retryWave - 1;
  state.intermissionTimer = 120;
- startNextWave(false);
+ state.spawnTimer = 0;
+ healPartyFull();
  } else {
  state.wave = Math.floor(clampNum(data.wave, 0, 9999, 0));
  state.intermissionTimer = 120;
@@ -14692,13 +16037,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  document.getElementById('retry-wave-btn').addEventListener('click', () => {
  ensureAudio();
- const snap = waveStartSnapshot || buildSaveData();
- if (!snap.retryWaveNum) snap.retryWaveNum = Math.max(1, state.wave);
- applySaveData(snap, true);
- document.getElementById('gameover-screen').style.display = 'none';
- document.getElementById('hud').style.display = 'block';
- state.running = true;
- showBanner(`🔄 RETRYING WAVE ${state.wave}!`, '#ffd166');
+ retryLevel();
  if (renderer.domElement.requestPointerLock) { try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
  });
 
@@ -15495,11 +16834,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const h2 = mount.querySelector('h2');
  if (h2) h2.textContent = `⚔️ CASTLE ARMORY SHOP — ${who}`;
  const wallet = mount.querySelector('.shop-wallet');
- if (wallet) wallet.textContent = `🪙 ${walletText()}`;
+ if (wallet) wallet.textContent = `🪙 ${walletText(idx)}`;
  const activeEl = mount.querySelector('.shop-active-wep');
  if (activeEl) activeEl.textContent = w.def.noUpgrades
  ? `${who} — Equipped: ${w.def.name} (No Upgrades Allowed)`
- : `${who} — Equipped: ${w.def.name} (Mk ${toRoman(w.tier)}) — Upgrades apply ONLY to this weapon`;
+ : `${who} — Equipped: ${w.def.name} (Mk ${toRoman(w.tier)} / L${weaponPowerLevel(idx, equippedIdx)}) — Upgrades apply ONLY to this weapon`;
 
  const body = mount.querySelector('.shop-body');
  const shopPreserve = captureShopFocus(body, mount);
@@ -15520,13 +16859,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  btn.className = 'shop-buy-btn';
  btn.dataset.sku = sku || title;
  btn.textContent = btnText || formatCoins(priceSilver);
- btn.disabled = disabled || state.silver < priceSilver;
+ btn.disabled = disabled || (priceSilver > 0 && !canAfford(idx, priceSilver));
  btn.addEventListener('click', () => {
- if (state.silver < priceSilver || disabled) return;
+ if (disabled) return;
+ if (priceSilver > 0 && !canAfford(idx, priceSilver)) return;
  ensureAudio();
  shopperIndex = idx;
  state.shopperIndex = idx;
- state.silver -= priceSilver;
+ if (priceSilver > 0 && !spendSilver(idx, priceSilver)) return;
  onBuy();
  playTone(540, 880, 0.14, 0.15, 'triangle');
  updateHUD();
@@ -15553,17 +16893,19 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  };
 
  if (tab === 'weapons') {
- state.weapons.forEach((wp, idx) => {
+ state.weapons.forEach((wp, widx) => {
  if (!wp.def.shopOnly) return;
  if (wp.def.theme && wp.def.theme !== themeId()) return;
+ const have = shopWeaponHave(idx, widx);
  addItem(
  wp.def.name,
- wp.unlocked ? 'Owned — Click to Equip' : `Unlock ${wp.def.name} permanently`,
- wp.unlocked ? 0 : wp.def.shopPrice,
+ have ? 'Owned — Click to Equip' : `Unlock ${wp.def.name} permanently`,
+ have ? 0 : wp.def.shopPrice,
  false,
- wp.unlocked ? (idx === equippedIdx ? 'EQUIPPED' : 'EQUIP') : formatCoins(wp.def.shopPrice),
+ have ? (widx === equippedIdx ? 'EQUIPPED' : 'EQUIP') : formatCoins(wp.def.shopPrice),
  () => {
- equipWeaponForShopper(idx);
+ if (!shopWeaponHave(idx, widx)) noteShopPurchase(idx, widx);
+ equipWeaponForShopper(widx);
  },
  wp.def.id,
  weaponIconDataURL(wp.def)
@@ -15580,6 +16922,28 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  weaponIconDataURL({ id: 'dual50', color: 0x78350f, accent: 0xfbbf24 })
  );
  } else if (tab === 'upgrades') {
+ const powerNow = weaponPowerLevel(idx, equippedIdx);
+ UPGRADE_OFFERS.weapons.forEach(offer => {
+ const isBase = offer.level === 1;
+ const owned = powerNow >= offer.level;
+ const row = addItem(
+ offer.title + ' — ' + w.def.name,
+ offer.desc,
+ offer.price,
+ owned,
+ isBase ? 'BASE' : (owned ? 'OWNED' : formatCoins(offer.price)),
+ () => { applyWeaponPower(idx, equippedIdx, offer.level); },
+ offer.sku
+ );
+ if (row) {
+ row.dataset.kind = 'weapons';
+ row.dataset.level = String(offer.level);
+ row.dataset.price = String(offer.price);
+ row.dataset.weapon = w.def.id;
+ const b = row.querySelector('.shop-buy-btn');
+ if (b) { b.dataset.kind = 'weapons'; b.dataset.level = String(offer.level); b.dataset.price = String(offer.price); }
+ }
+ });
  if (w.def.noUpgrades) {
  const msg = document.createElement('div');
  msg.style.gridColumn = '1 / -1';
@@ -15690,7 +17054,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  () => {
  const b = mineBag(idx);
  if (!mineRoom(b)) {
- state.silver += MINE_PRICE;
+ refundSilver(MINE_PRICE);
  return;
  }
  giveMineStock(b);
@@ -15698,12 +17062,62 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  );
  if (mineRow) {
  mineRow.dataset.item = 'mine';
+ mineRow.dataset.kind = 'mines';
+ mineRow.dataset.level = '1';
  mineRow.dataset.price = String(MINE_PRICE);
  const mineBuy = mineRow.querySelector('.shop-buy-btn');
- if (mineBuy) mineBuy.dataset.sku = 'mine';
+ if (mineBuy) {
+ mineBuy.dataset.sku = 'mine';
+ mineBuy.dataset.kind = 'mines';
+ mineBuy.dataset.level = '1';
+ mineBuy.dataset.price = String(MINE_PRICE);
  }
+ }
+ const mineTierNow = mineTierOf(idx);
+ [2, 3].forEach(level => {
+ const offer = upgradeOffer('mines', level);
+ const owned = mineTierNow >= level;
+ const row = addItem(
+ '💣 ' + offer.title,
+ who + ' only. ' + offer.desc,
+ offer.price,
+ owned,
+ owned ? 'OWNED' : formatCoins(offer.price),
+ () => { applyMineTier(idx, level); },
+ offer.sku
+ );
+ if (row) {
+ row.dataset.item = offer.sku;
+ row.dataset.kind = 'mines';
+ row.dataset.level = String(level);
+ row.dataset.price = String(offer.price);
+ const b = row.querySelector('.shop-buy-btn');
+ if (b) { b.dataset.kind = 'mines'; b.dataset.level = String(level); b.dataset.price = String(offer.price); }
+ }
+ });
  } else if (tab === 'castleworks') {
  const cw = state.castleworks;
+ const wallLvl = cw.walls || 0;
+ UPGRADE_OFFERS.walls.forEach(offer => {
+ const owned = wallLvl >= offer.level;
+ const row = addItem(
+ offer.title,
+ offer.desc + ' (' + wallLvl + '/3)',
+ offer.price,
+ owned,
+ owned ? 'OWNED' : formatCoins(offer.price),
+ () => { applyWallTier(offer.level); },
+ offer.sku
+ );
+ if (row) {
+ row.dataset.cw = offer.sku;
+ row.dataset.kind = 'walls';
+ row.dataset.level = String(offer.level);
+ row.dataset.price = String(offer.price);
+ const b = row.querySelector('.shop-buy-btn');
+ if (b) { b.dataset.kind = 'walls'; b.dataset.level = String(offer.level); b.dataset.price = String(offer.price); }
+ }
+ });
  const gatePrices = [80, 120, 160];
  const wellPrices = [60, 90];
  const spikePrices = [50, 80];
@@ -15961,6 +17375,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  mines: 0,
  minesBought: 0,
  minesBoughtLevel: state.level,
+ mineTier: 1,
  minesSelected: false,
  mineFireLatch: false,
  specialAmmo: { type: null, timer: 0 },
@@ -15978,6 +17393,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  prevShopBtn: false,
  prevDeploy50Btn: false,
  prevKb50: false,
+ prevGiftChord: false,
  mountedTurret: null
  };
  Object.defineProperty(ep, 'mag', {
@@ -16139,7 +17555,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const walletEl = document.createElement('div');
  walletEl.className = 'vp-wallet';
  walletEl.id = 'vp-wallet-' + i;
- walletEl.textContent = walletText();
+ walletEl.textContent = walletText(i);
  vp.appendChild(ch);
  vp.appendChild(badge);
  vp.appendChild(turret);
@@ -16197,7 +17613,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  el.textContent = text;
  el.style.display = text ? 'block' : 'none';
  const wal = document.getElementById('vp-wallet-' + i);
- if (wal) wal.textContent = walletText();
+ if (wal) wal.textContent = walletText(i);
  }
  }
 
@@ -16245,7 +17661,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateSplitHUD();
  return;
  }
- const dmgMult = (epBuffs.doubleDmg > 0) ? 2 : 1;
+ const dmgMult = ((epBuffs.doubleDmg > 0) ? 2 : 1) * weaponPowerMult(ep.index, ep.weaponIdx);
  if (def.explosiveArrow) {
  fireExplosiveArrow(Math.round(def.damage * dmgMult), ep.cam, ep.pos);
  if (ep.mag === 0 && ep.reserve > 0) { ep.reloading = true; ep.reloadTimer = def.reloadTime; }
@@ -16314,7 +17730,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  function updateExtraPlayers(dt) {
  if (numPlayers <= 1) return;
- if (menuBlocksGameplay()) return;
+ if (playerPaused || menuBlocksGameplay()) return;
 
  extraPlayers.forEach(ep => {
  if (ep.buffs) {
@@ -16391,9 +17807,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ep.dashTimer = 30.0;
  showBanner(`💨 ${ep.label} DASH ACTIVATED (30s)!`, ep.color);
  }
- if (pIn.cycleGrenade && !ep.prevGrenadeCycleBtn) cycleGrenadeType(ep, 1);
- if (pIn.cycleGrenadePrev && !ep.prevGrenadeCyclePrevBtn) cycleGrenadeType(ep, -1);
- if (pIn.throwGrenade && !ep.prevGrenadeBtn) throwGrenade(ep.pos, ep.cam, ep);
+ const epChord = padGiftChord(pad);
+ if (epChord && !ep.prevGiftChord && numPlayers > 1 && !anyShopOpen() && !giftIsOpen()) openGift(ep.index);
+ if (!epChord && pIn.cycleGrenade && !ep.prevGrenadeCycleBtn) cycleGrenadeType(ep, 1);
+ if (!epChord && pIn.cycleGrenadePrev && !ep.prevGrenadeCyclePrevBtn) cycleGrenadeType(ep, -1);
+ if (!epChord && pIn.throwGrenade && !ep.prevGrenadeBtn) throwGrenade(ep.pos, ep.cam, ep);
  if (pIn.dropMine && !ep.prevDropMineBtn && playerCanUseMines(ep.index)) dropMine(ep.index);
  if (pIn.toggleMines && !ep.prevToggleMineBtn && playerCanUseMines(ep.index)) toggleMinesSelected(ep.index);
  if (pIn.interact && !ep.prevShopBtn) {
@@ -16410,20 +17828,38 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ep.prevToggleMineBtn = pIn.toggleMines;
  ep.prevShopBtn = pIn.interact;
  ep.prevDeploy50Btn = pIn.deploy50;
- }
+ ep.prevGiftChord = epChord;
+ } else ep.prevGiftChord = false;
 
- // Keyboard fallback for P2 (Arrow keys to move/turn, Enter or / to shoot, . to reload, , to cycle)
+ // Keyboard from this player's bind map. P2 defaults: arrows turn, Enter or / shoots, . reloads, , cycles.
+ const epKb = playerKeybinds[ep.index] || defaultBindsFor(ep.index);
+ if (epKb.forward && keys[epKb.forward]) moveFwd += 1;
+ if (epKb.backward && keys[epKb.backward]) moveFwd -= 1;
  if (ep.index === 1) {
- if (keys['ArrowUp']) moveFwd += 1;
- if (keys['ArrowDown']) moveFwd -= 1;
- if (keys['ArrowLeft']) turnYaw += 2.2;
- if (keys['ArrowRight']) turnYaw -= 2.2;
- if (keys['Enter'] || keys['Slash'] || keys['ControlRight']) wantShoot = true;
- if (keys['Period']) wantReload = true;
- if (keys['Comma']) wantCycle = true;
- if (keys['Numpad0'] && !ep.prevKb50) handleDual50Key(ep);
- ep.prevKb50 = !!keys['Numpad0'];
+ if (epKb.left && keys[epKb.left]) turnYaw += 2.2;
+ if (epKb.right && keys[epKb.right]) turnYaw -= 2.2;
+ } else {
+ if (epKb.left && keys[epKb.left]) moveStrafe -= 1;
+ if (epKb.right && keys[epKb.right]) moveStrafe += 1;
  }
+ if (epKb.jump && keys[epKb.jump]) wantJump = true;
+ if ((epKb.reload && keys[epKb.reload]) || (epKb.reloadAlt && keys[epKb.reloadAlt])) wantReload = true;
+ if (epKb.cycleWeapon && keys[epKb.cycleWeapon]) wantCycle = true;
+ const shootAlias = ep.index === 1 && epKb.shoot === 'Enter' && (keys['Slash'] || keys['ControlRight']);
+ if ((epKb.shoot && keys[epKb.shoot]) || shootAlias) wantShoot = true;
+ if (epKb.deploy50 && keys[epKb.deploy50] && !ep.prevKb50) handleDual50Key(ep);
+ ep.prevKb50 = !!(epKb.deploy50 && keys[epKb.deploy50]);
+ if (epKb.ads && keys[epKb.ads] && !ep.prevKbAds) {
+ ep.ads = !ep.ads;
+ syncExtraAim(ep);
+ refreshScopeChrome();
+ }
+ ep.prevKbAds = !!(epKb.ads && keys[epKb.ads]);
+ if (epKb.dash && keys[epKb.dash] && !ep.prevKbDash && ep.dashTimer <= 0 && ep.dashCooldown <= 0) {
+ ep.dashTimer = 30.0;
+ showBanner(`💨 ${ep.label} DASH ACTIVATED (30s)!`, ep.color);
+ }
+ ep.prevKbDash = !!(epKb.dash && keys[epKb.dash]);
 
  ep.yaw += turnYaw * dt;
  ep.pitch = Math.max(-1.35, Math.min(1.35, ep.pitch + turnPitch * dt));
@@ -16454,9 +17890,12 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (wantJump && ep.onGround) { ep.vel.y = 7.4; ep.onGround = false; }
  ep.vel.y -= 20.5 * dt;
  ep.pos.y += ep.vel.y * dt;
+ if (warpPlayerIfFallen(ep.pos, ep.vel, ep.label, ep.color)) {
+ ep.onGround = true;
+ } else {
  const fy = getGroundHeight(ep.pos.x, ep.pos.z) + 1.72;
  if (ep.pos.y <= fy) { ep.pos.y = fy; ep.vel.y = 0; ep.onGround = true; }
- warpPlayerIfFallen(ep.pos, ep.vel, ep.label, ep.color);
+ }
  }
 
  // Healing well, armory refill, and shrine follow the shared courtyard slots
@@ -16505,7 +17944,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (shrineOffer && shrineOffer.owner === ep.index) {
  flipShrineFocus(1);
  } else {
- const unlocked = state.weapons.map((w, idx) => w.unlocked ? idx : -1).filter(idx => idx >= 0);
+ const unlocked = cycleIdsFor(ep.index);
  if (unlocked.length > 1) {
  const pos = unlocked.indexOf(ep.weaponIdx);
  ep.weaponIdx = unlocked[(pos + 1) % unlocked.length];
@@ -16624,9 +18063,21 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  paintThemePicker();
 
  document.getElementById('play-btn').addEventListener('click', () => {
+ endPlayerPause();
  ensureAudio();
  if (selectedThemeChoice === 'random') setTheme(rollThemeId());
- if (!hasStartedRun) startCourtyardRun(false);
+ if (!hasStartedRun) {
+ startCourtyardRun(false);
+ captureLevelBoot();
+ } else {
+ const typed = normalizeSeed(readSeedField());
+ const liveCode = (courtyard && courtyard.code) ? courtyard.code : '';
+ if (typed && typed !== liveCode) {
+ commitCourtyard(generateLayout(typed, []), { force: true });
+ writeSeedField(typed);
+ }
+ rememberLiveLevel();
+ }
  hasStartedRun = true;
  refreshSaveMenuUI();
  document.getElementById('start-screen').style.display = 'none';
@@ -16638,10 +18089,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  document.getElementById('restart-btn').addEventListener('click', () => {
  ensureAudio();
- resetGame();
- document.getElementById('gameover-screen').style.display = 'none';
- document.getElementById('hud').style.display = 'block';
- state.running = true;
+ restartRun();
  if (renderer.domElement.requestPointerLock) { try { const p = renderer.domElement.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (err) {} }
  });
 
@@ -16689,8 +18137,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  snowPoints.visible = false;
  bigSnowPoints.visible = false;
  } else {
- snowPoints.visible = settings.snow > 0;
- bigSnowPoints.visible = settings.snow >= 2;
+ applySnowVisibility();
  }
  },
  triggerGameOver,
@@ -16867,7 +18314,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let idx = idOrIdx;
  if (typeof idOrIdx === 'string') idx = WEAPON_DEFS.findIndex(d => d.id === idOrIdx);
  if (idx < 0 || !WEAPON_DEFS[idx]) return -1;
+ const wasUnlocked = !!state.weapons[idx].unlocked;
+ const hadOwner = weaponHasOwner(idx);
  state.weapons[idx].unlocked = true;
+ const ownerIndex = index | 0;
+ if (ownerIndex >= 0 && ownerIndex < 4 && state.weapons[idx].def.shopOnly && (hadOwner || !wasUnlocked)) noteShopPurchase(ownerIndex, idx);
  if (index <= 0) {
  if (state.currentWeaponIdx !== idx) switchWeapon(idx);
  updateSplitHUD();
@@ -17341,10 +18792,12 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  shrine: state.castleworks.shrine,
  bell: state.castleworks.bell,
  spikes: state.castleworks.spikes,
+ walls: state.castleworks.walls || 0,
+ wallBraces: wallBraceGroup ? wallBraceGroup.children.length : 0,
  maxCastleHp: state.maxCastleHp,
  castleHp: state.castleHp,
  silver: state.silver,
- wallet: walletText(),
+ wallet: walletText(0),
  kits: state.partyKits.map(k => ({ bandolier: !!k.bandolier, dashOil: !!k.dashOil, spotter: !!k.spotter })),
  spikeCount: xs.length,
  spikeXs: xs
@@ -17396,7 +18849,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  fest: m.fest || '',
  skip: !!m.skipGateDespawn,
  type: m.typeKey || '',
- bossKind: m.bossKind || ''
+ bossKind: m.bossKind || '',
+ emissiveOn: !!m.emissiveOn,
+ glow: m.glowColor || 0
  }));
  },
  playerPace() {
@@ -17475,6 +18930,47 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const m = monsters[monsters.length - 1];
  return { hp: m.hp, speed: m.speed, x: m.mesh.position.x, y: m.mesh.position.y, z: m.mesh.position.z, flying: !!(m.base && m.base.flying), boss: !!(m.base && m.base.isBoss) };
  },
+ monsterGlow(theme) { return monsterGlow(theme); },
+ foeGlow(index) { return foeGlow(index); },
+ plantTripwire(index) { return plantTripwire(index | 0, false); },
+ pendingStake(index) {
+ const s = pendingStakes[index | 0];
+ return s ? { x: s.x, z: s.z } : null;
+ },
+ listWires() {
+ return castleWires.map(w => ({ ax: w.ax, az: w.az, bx: w.bx, bz: w.bz, owner: w.owner, tripped: !!w.tripped }));
+ },
+ nudgeMonster(i, x, z) {
+ const m = monsters[i | 0];
+ if (!m || !m.mesh) return null;
+ const prevX = m.mesh.position.x;
+ const prevZ = m.mesh.position.z;
+ m.mesh.position.x = x;
+ m.mesh.position.z = z;
+ checkWiresCrossed(m, prevX, prevZ);
+ return { hp: m.hp, x: m.mesh.position.x, z: m.mesh.position.z, wires: castleWires.length };
+ },
+ playableEnvelope() { return playableEnvelope(); },
+ wouldWarp(index) {
+ const i = index | 0;
+ let x, y, z;
+ if (i <= 0) { x = player.pos.x; y = player.pos.y; z = player.pos.z; }
+ else {
+ const ep = extraPlayers[i - 1];
+ if (!ep) return false;
+ x = ep.pos.x; y = ep.pos.y; z = ep.pos.z;
+ }
+ return wouldWarpAt(x, y, z);
+ },
+ warpCount() { return playerWarpCount; },
+ snowEnabled() { return readSnowToggle(); },
+ setSnowEnabled(on) { return applySnowToggle(!!on); },
+ snowVisible() {
+ return { on: readSnowToggle(), flakes: !!snowPoints.visible, big: !!bigSnowPoints.visible, level: settings.snow | 0, draw: snowDrawLevel() };
+ },
+ retryLevel() { return retryLevel(); },
+ restartRun() { return restartRun(); },
+ levelStatus() { return levelStatus(); },
  makeFire(x, z) {
  spawnFireZone(new THREE.Vector3(x, getGroundHeight(x, z), z), 2.2, 6.5);
  return fireZones.length;
@@ -17826,6 +19322,26 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  };
  },
  mines(index) { return mineStatus(index); },
+ upgradeTiers(index) { return upgradeTiers(index | 0); },
+ buyUpgrade(index, kind, level) { return buyUpgrade(index | 0, kind, level | 0); },
+ goldOf(index) { return goldOf(index | 0); },
+ setGold(index, amount) { return setGold(index | 0, amount); },
+ giftGold(fromIndex, toIndex, amount) { return giftGold(fromIndex, toIndex, amount); },
+ openGift(index) { return openGift(index | 0); },
+ closeGift() { closeGift(); return { open: giftIsOpen() }; },
+ giftState() {
+ return {
+ open: giftIsOpen(),
+ from: giftFrom,
+ keys: [0, 1, 2, 3].map(function (i) { return giftCodeFor(i); }),
+ chord: 'LB+RB',
+ amount: GIFT_SILVER,
+ note: 'Gold earned counts each world coin at full value for every active player. Gifts move silver and do not change gold earned.'
+ };
+ },
+ ownsWeapon(index, idOrIdx) { return ownsWeapon(index, idOrIdx); },
+ runStats() { return publicRunStats(); },
+ setRunStats(index, patch) { return applyRunStat(index, patch); },
  grantMines(index, n) { return grantMines(index, n); },
  buyMines(index, n) { return buyMines(index, n); },
  dropMine(index, x, z) { return dropMine(index, x, z); },
@@ -17839,6 +19355,32 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  livePaused = !!on;
  if (!livePaused) queueLiveFrame();
  },
+ isPaused() { return !!playerPaused; },
+ togglePause(index) { return togglePause(index); },
+ pauseBinds() { return [0, 1, 2, 3].map(function (i) { return pauseCodeFor(i); }); },
+ keybindsFor(index) {
+ const i = index | 0;
+ if (i < 0 || i > 3) return null;
+ return Object.assign({}, playerKeybinds[i]);
+ },
+ setKeybind(index, action, code) {
+ const ok = applyKeybind(index, action, code);
+ return ok ? Object.assign({}, playerKeybinds[index | 0]) : null;
+ },
+ resetKeybinds(index) {
+ const all = index === undefined || index === null || index === 'all' || index === -1;
+ clearKeybinds(all ? 'all' : index);
+ const i = all ? 0 : (index | 0);
+ return Object.assign({}, playerKeybinds[i] || {});
+ },
+ selectBindPlayer(index) {
+ bindPlayerIndex = Math.max(0, Math.min(3, index | 0));
+ listeningBindAction = null;
+ renderKeybindsUI();
+ return bindPlayerIndex;
+ },
+ bindPlayer() { return bindPlayerIndex; },
+ loopPaused() { return !!livePaused; },
  stepLive(n) {
  const count = Math.max(1, n || 1);
  const polls = [];
@@ -18117,6 +19659,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  debugSkipRender = true;
  }
  resetGame();
+ paintRunRoster();
  refreshSaveMenuUI();
  refreshGamepadStatusUI();
  if (!livePaused) queueLiveFrame();
