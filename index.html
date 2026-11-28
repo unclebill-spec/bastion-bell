@@ -941,6 +941,44 @@
  return;
  }
 
+ // Update 7 stage 2 — one set of scratch values for the frame loop.
+ // Callers read them before the next fill. Debug snapshots copy fields out.
+ const scratchFwd = new THREE.Vector3();
+ const scratchRight = new THREE.Vector3();
+ const scratchMove = new THREE.Vector3();
+ const scratchBack = new THREE.Vector3();
+ const scratchNdc = new THREE.Vector2();
+ const scratchPrev = new THREE.Vector3();
+ const scratchNext = new THREE.Vector3();
+ const scratchLook = new THREE.Vector3();
+ const scratchHit = new THREE.Vector3();
+ const scratchCenter = new THREE.Vector3();
+ const scratchHurt = new THREE.Vector3();
+ const scratchStart = new THREE.Vector3();
+ const scratchEnd = new THREE.Vector3();
+ const hazardScratch = { ice: false, snow: false, iceMul: 1 };
+ const xzScratchA = { x: 0, z: 0 };
+ const xzScratchB = { x: 0, z: 0 };
+ const sweepHit = { monster: null, point: null };
+ const framePadList = [];
+ const bulletRootScratch = [];
+ const shotRootScratch = [];
+ const monsterRootScratch = [];
+ const cycleIdScratch = [];
+ const livingPools = Object.create(null);
+ const splitCamScratch = [];
+ const splitAvatarScratch = [];
+ const splitVpScratch = [
+ { x: 0, y: 0, w: 0, h: 0 },
+ { x: 0, y: 0, w: 0, h: 0 },
+ { x: 0, y: 0, w: 0, h: 0 },
+ { x: 0, y: 0, w: 0, h: 0 }
+ ];
+ const splitVpView = [];
+ const torchBudgetFew = { meshes: 6, lights: 3 };
+ const torchBudgetMany = { meshes: 4, lights: 2 };
+ const hitSetScratch = new Set();
+
  // Strict numeric clamping & keycode validation helpers (security hardening)
  function clampNum(val, min, max, fallback) {
  const n = Number(val);
@@ -1495,6 +1533,9 @@
  // THREE.JS SCENE, RENDERER & LIGHTING
  // =========================================================================
  const scene = new THREE.Scene();
+ // Split-screen draws the same matrices in every viewport. One walk is enough.
+ scene.autoUpdate = false;
+ scene.matrixAutoUpdate = false;
  scene.background = new THREE.Color(0x9bc4e2);
  scene.fog = new THREE.FogExp2(0x9bc4e2, 0.0085);
  const stormSky = new THREE.Color(0x161e2e);
@@ -1708,7 +1749,7 @@
  return 1;
  }
  function themeTorchBudget() {
- return themePlayerCount() >= 3 ? { meshes: 4, lights: 2 } : { meshes: 6, lights: 3 };
+ return themePlayerCount() >= 3 ? torchBudgetMany : torchBudgetFew;
  }
  function themeByteHex(arr, i) {
  const o = i * 3;
@@ -3611,8 +3652,124 @@
  const VOX = 0.5;
  const worldVoxels = [];
  const colliders = [];
+ // Update 7 stage 3 — collider cells. Queries stay the 0.5 / 0.45 pad tests.
+ const COL_CELL = 8;
+ const colMap = Object.create(null);
+ const colKeys = [];
+ const colPool = [];
+ let colGen = 1;
+ let colBuilt = 0;
+ const colPush = colliders.push.bind(colliders);
+ const colSplice = colliders.splice.bind(colliders);
+ colliders.push = function () {
+ colGen++;
+ return colPush.apply(colliders, arguments);
+ };
+ colliders.splice = function () {
+ colGen++;
+ return colSplice.apply(colliders, arguments);
+ };
+ function colKey(ix, iz) {
+ return (ix + 4096) + (iz + 4096) * 8192;
+ }
+ function rebuildColliderGrid() {
+ if (colBuilt === colGen) return;
+ colBuilt = colGen;
+ for (let i = 0; i < colKeys.length; i++) {
+ const key = colKeys[i];
+ const bucket = colMap[key];
+ if (bucket) {
+ bucket.length = 0;
+ colPool.push(bucket);
+ }
+ colMap[key] = undefined;
+ }
+ colKeys.length = 0;
+ const pad = 0.5;
+ const slack = 0.05;
+ for (let i = 0; i < colliders.length; i++) {
+ const c = colliders[i];
+ const ix0 = Math.floor((c.minX - pad - slack) / COL_CELL);
+ const ix1 = Math.floor((c.maxX + pad + slack) / COL_CELL);
+ const iz0 = Math.floor((c.minZ - pad - slack) / COL_CELL);
+ const iz1 = Math.floor((c.maxZ + pad + slack) / COL_CELL);
+ for (let iz = iz0; iz <= iz1; iz++) {
+ for (let ix = ix0; ix <= ix1; ix++) {
+ const key = colKey(ix, iz);
+ let bucket = colMap[key];
+ if (!bucket) {
+ bucket = colPool.length ? colPool.pop() : [];
+ bucket.length = 0;
+ colMap[key] = bucket;
+ colKeys.push(key);
+ }
+ bucket.push(c);
+ }
+ }
+ }
+ }
+ function collidersAt(x, z) {
+ rebuildColliderGrid();
+ return colMap[colKey(Math.floor(x / COL_CELL), Math.floor(z / COL_CELL))];
+ }
+ function colliderBlocked(x, z, pad) {
+ const bucket = collidersAt(x, z);
+ if (!bucket) return false;
+ for (let i = 0; i < bucket.length; i++) {
+ const c = bucket[i];
+ if (x > c.minX - pad && x < c.maxX + pad && z > c.minZ - pad && z < c.maxZ + pad) return true;
+ }
+ return false;
+ }
+ function colliderBlockedLinear(x, z, pad) {
+ for (let i = 0; i < colliders.length; i++) {
+ const c = colliders[i];
+ if (x > c.minX - pad && x < c.maxX + pad && z > c.minZ - pad && z < c.maxZ + pad) return true;
+ }
+ return false;
+ }
+ function colliderAudit() {
+ let mismatch = 0;
+ let samples = 0;
+ const pads = [0.5, 0.45];
+ function probe(x, z) {
+ for (let p = 0; p < pads.length; p++) {
+ samples++;
+ if (colliderBlocked(x, z, pads[p]) !== colliderBlockedLinear(x, z, pads[p])) mismatch++;
+ }
+ }
+ for (let z = -78; z <= 26; z += 3.5) {
+ for (let x = -64; x <= 64; x += 3.5) probe(x, z);
+ }
+ for (let i = -10; i <= 10; i++) {
+ probe(i * COL_CELL, 0);
+ probe(i * COL_CELL + 0.02, -0.02);
+ probe(i * COL_CELL - 0.02, 0.02);
+ }
+ for (let i = 0; i < colliders.length; i++) {
+ const c = colliders[i];
+ const xs = [c.minX - 0.55, c.minX - 0.45, c.minX, (c.minX + c.maxX) * 0.5, c.maxX, c.maxX + 0.45, c.maxX + 0.55];
+ const zs = [c.minZ - 0.55, c.minZ - 0.45, c.minZ, (c.minZ + c.maxZ) * 0.5, c.maxZ, c.maxZ + 0.45, c.maxZ + 0.55];
+ for (let a = 0; a < xs.length; a++) {
+ for (let b = 0; b < zs.length; b++) probe(xs[a], zs[b]);
+ }
+ }
+ return { mismatch: mismatch, samples: samples, cells: colKeys.length, colliders: colliders.length };
+ }
  let worldMesh = null;
+ let worldAnchor = null;
  let worldMat = null;
+ let worldFaceCache = null;
+ let worldFaceCount = 0;
+ let worldTriCount = 0;
+ let worldDrawCount = 0;
+ let worldCellCount = 0;
+ let castleInkSources = 0;
+ let castleInkDraws = 0;
+ let sealedSources = 0;
+ let sealedDraws = 0;
+ let hudWrites = 0;
+ let hudSkips = 0;
  let castleOutline = null;
  let castleWearGroup = null;
  let castleWearSoot = null;
@@ -3982,7 +4139,9 @@
  }
  let z = pos.z;
  if (!fieldWaterAt(x, tryZ) && tryZ > limZ && tryZ < 20.5) z = tryZ;
- return { x: x, z: z };
+ xzScratchA.x = x;
+ xzScratchA.z = z;
+ return xzScratchA;
  }
  function marchField(x, z, frames) {
  const pos = { x: x, z: z, y: getGroundHeight(x, z) };
@@ -4612,40 +4771,309 @@
  else paintEvergreen(tree.x, tree.z, 5, rng);
  }
  }
- function rebuildWorldMesh() {
- if (worldMesh) {
- scene.remove(worldMesh);
- if (worldMesh.geometry) worldMesh.geometry.dispose();
+ function dropWorldDraw() {
+ if (worldAnchor && worldAnchor !== worldMesh) {
+ if (worldAnchor.geometry) worldAnchor.geometry.dispose();
+ if (worldAnchor.parent) worldAnchor.parent.remove(worldAnchor);
+ }
+ worldAnchor = null;
+ if (!worldMesh) return;
+ const geos = [];
+ worldMesh.traverse(function (obj) {
+ if (obj.geometry && geos.indexOf(obj.geometry) < 0) geos.push(obj.geometry);
+ });
+ for (let gi = 0; gi < geos.length; gi++) geos[gi].dispose();
+ if (worldMesh.parent) worldMesh.parent.remove(worldMesh);
  worldMesh = null;
  }
+ function worldIndexUint32() {
+ if (typeof renderer === 'undefined' || !renderer || !renderer.getContext) return false;
+ const gl = renderer.getContext();
+ if (!gl) return false;
+ if (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext) return true;
+ return !!(gl.getExtension && gl.getExtension('OES_element_index_uint'));
+ }
+ function worldFaceTemplates() {
+ if (worldFaceCache) return worldFaceCache;
+ const geo = new THREE.BoxGeometry(VOX, VOX, VOX);
+ const pos = geo.attributes.position;
+ const nor = geo.attributes.normal;
+ const uv = geo.attributes.uv;
+ const index = geo.index;
+ const groups = geo.groups && geo.groups.length ? geo.groups : [{ start: 0, count: index ? index.count : pos.count }];
+ const faces = [];
+ for (let g = 0; g < groups.length; g++) {
+ const start = groups[g].start;
+ const count = groups[g].count;
+ const map = Object.create(null);
+ const uniq = [];
+ const tris = [];
+ for (let i = 0; i < count; i++) {
+ const vi = index ? index.getX(start + i) : (start + i);
+ let slot = map[vi];
+ if (slot === undefined) {
+ slot = uniq.length;
+ map[vi] = slot;
+ uniq.push(vi);
+ }
+ tris.push(slot);
+ }
+ const n = uniq.length;
+ const px = new Float32Array(n);
+ const py = new Float32Array(n);
+ const pz = new Float32Array(n);
+ const nx = new Float32Array(n);
+ const ny = new Float32Array(n);
+ const nz = new Float32Array(n);
+ const u = new Float32Array(n);
+ const v = new Float32Array(n);
+ let ndx = 0;
+ let ndy = 0;
+ let ndz = 0;
+ for (let i = 0; i < n; i++) {
+ const vi = uniq[i];
+ px[i] = pos.getX(vi);
+ py[i] = pos.getY(vi);
+ pz[i] = pos.getZ(vi);
+ nx[i] = nor.getX(vi);
+ ny[i] = nor.getY(vi);
+ nz[i] = nor.getZ(vi);
+ u[i] = uv.getX(vi);
+ v[i] = uv.getY(vi);
+ ndx += nx[i];
+ ndy += ny[i];
+ ndz += nz[i];
+ }
+ const inv = n || 1;
+ faces.push({
+ px: px, py: py, pz: pz, nx: nx, ny: ny, nz: nz, u: u, v: v, tris: tris, n: n, trisN: count,
+ dx: Math.round(ndx / inv) * 2,
+ dy: Math.round(ndy / inv) * 2,
+ dz: Math.round(ndz / inv) * 2
+ });
+ }
+ geo.dispose();
+ worldFaceCache = faces;
+ return faces;
+ }
+ function makeWorldChunk(positions, normals, uvs, colors, indices, asInstance) {
+ const geo = new THREE.BufferGeometry();
+ geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+ geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+ geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+ geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+ geo.setIndex(new THREE.BufferAttribute(indices, 1));
+ geo.computeBoundingBox();
+ geo.computeBoundingSphere();
+ let mesh;
+ if (asInstance) {
+ mesh = new THREE.InstancedMesh(geo, worldMat, 1);
+ const dummy = new THREE.Object3D();
+ dummy.updateMatrix();
+ mesh.setMatrixAt(0, dummy.matrix);
+ mesh.instanceMatrix.needsUpdate = true;
+ mesh.count = 1;
+ } else {
+ mesh = new THREE.Mesh(geo, worldMat);
+ }
+ mesh.castShadow = !headlessDriver;
+ mesh.receiveShadow = !headlessDriver;
+ mesh.frustumCulled = false;
+ mesh.userData.worldVoxels = true;
+ mesh.userData.noOutline = true;
+ mesh.userData.batchKind = 'merged-faces';
+ mesh.matrixAutoUpdate = false;
+ mesh.updateMatrix();
+ mesh.raycast = function () {};
+ return mesh;
+ }
+ function rebuildWorldMesh() {
+ dropWorldDraw();
+ worldFaceCount = 0;
+ worldTriCount = 0;
+ worldDrawCount = 0;
+ worldCellCount = 0;
  if (!worldMat) {
  worldMat = new THREE.MeshStandardMaterial({
  color: 0xffffff,
  roughness: 0.78,
  metalness: 0.08,
  normalMap: window.voxelNormalMap,
- normalScale: new THREE.Vector2(0.85, 0.85)
+ normalScale: new THREE.Vector2(0.85, 0.85),
+ vertexColors: true
  });
+ worldMat.userData.shared = true;
  }
- const geo = new THREE.BoxGeometry(VOX, VOX, VOX);
- const inst = new THREE.InstancedMesh(geo, worldMat, worldVoxels.length);
- inst.castShadow = !headlessDriver;
- inst.receiveShadow = !headlessDriver;
- inst.userData.worldVoxels = true;
- const dummy = new THREE.Object3D();
- for (let i = 0; i < worldVoxels.length; i++) {
+ worldMat.vertexColors = true;
+ const nVox = worldVoxels.length;
+ const occ = new Map();
+ const xs = new Float32Array(nVox);
+ const ys = new Float32Array(nVox);
+ const zs = new Float32Array(nVox);
+ const cr = new Float32Array(nVox);
+ const cg = new Float32Array(nVox);
+ const cb = new Float32Array(nVox);
+ const qxs = new Int32Array(nVox);
+ const qys = new Int32Array(nVox);
+ const qzs = new Int32Array(nVox);
+ let uniq = 0;
+ for (let i = 0; i < nVox; i++) {
  const v = worldVoxels[i];
- dummy.position.set(v.x, v.y, v.z);
- dummy.updateMatrix();
- inst.setMatrixAt(i, dummy.matrix);
- inst.setColorAt(i, v.color);
+ const qx = Math.round(v.x * 4);
+ const qy = Math.round(v.y * 4);
+ const qz = Math.round(v.z * 4);
+ const key = (qx + 2048) * 16777216 + (qy + 2048) * 4096 + (qz + 2048);
+ const prev = occ.get(key);
+ if (prev !== undefined) {
+ cr[prev] = v.color.r;
+ cg[prev] = v.color.g;
+ cb[prev] = v.color.b;
+ continue;
  }
- inst.instanceMatrix.needsUpdate = true;
- if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
- scene.add(inst);
- worldMesh = inst;
+ occ.set(key, uniq);
+ xs[uniq] = v.x;
+ ys[uniq] = v.y;
+ zs[uniq] = v.z;
+ cr[uniq] = v.color.r;
+ cg[uniq] = v.color.g;
+ cb[uniq] = v.color.b;
+ qxs[uniq] = qx;
+ qys[uniq] = qy;
+ qzs[uniq] = qz;
+ uniq++;
+ }
+ worldCellCount = uniq;
+ const faces = worldFaceTemplates();
+ const faceN = faces.length;
+ const exposed = new Uint8Array(uniq * faceN);
+ let faceCount = 0;
+ for (let i = 0; i < uniq; i++) {
+ const qx = qxs[i];
+ const qy = qys[i];
+ const qz = qzs[i];
+ const base = i * faceN;
+ for (let f = 0; f < faceN; f++) {
+ const face = faces[f];
+ const nk = (qx + face.dx + 2048) * 16777216 + (qy + face.dy + 2048) * 4096 + (qz + face.dz + 2048);
+ if (!occ.has(nk)) {
+ exposed[base + f] = 1;
+ faceCount++;
+ }
+ }
+ }
+ worldFaceCount = faceCount;
+ worldTriCount = faceCount * 2;
  const badge = document.getElementById('voxel-badge');
  if (badge) badge.textContent = `Voxels Rendered: ${worldVoxels.length.toLocaleString()}`;
+ if (faceCount === 0) {
+ const geo = new THREE.BufferGeometry();
+ const mesh = new THREE.InstancedMesh(geo, worldMat, 1);
+ mesh.count = 0;
+ mesh.visible = false;
+ mesh.userData.worldVoxels = true;
+ mesh.userData.noOutline = true;
+ mesh.userData.batchKind = 'merged-faces';
+ mesh.raycast = function () {};
+ scene.add(mesh);
+ worldMesh = mesh;
+ worldDrawCount = 0;
+ return;
+ }
+ let vertTotal = 0;
+ let indexTotal = 0;
+ for (let i = 0; i < uniq; i++) {
+ const base = i * faceN;
+ for (let f = 0; f < faceN; f++) {
+ if (!exposed[base + f]) continue;
+ vertTotal += faces[f].n;
+ indexTotal += faces[f].trisN;
+ }
+ }
+ const oneDraw = worldIndexUint32() || vertTotal <= 65535;
+ const maxVerts = oneDraw ? vertTotal : 60000;
+ const meshes = [];
+ const pArr = new Float32Array(maxVerts * 3);
+ const nArr = new Float32Array(maxVerts * 3);
+ const uArr = new Float32Array(maxVerts * 2);
+ const cArr = new Float32Array(maxVerts * 3);
+ const iCap = oneDraw ? indexTotal : (maxVerts * 6);
+ const iArr = (oneDraw && vertTotal > 65535) ? new Uint32Array(iCap) : new Uint16Array(iCap);
+ let vN = 0;
+ let iN = 0;
+ const flushChunk = function (asInstance) {
+ if (vN === 0) return;
+ const full = vN * 3 === pArr.length && iN === iArr.length;
+ const mesh = makeWorldChunk(
+ full ? pArr : new Float32Array(pArr.subarray(0, vN * 3)),
+ full ? nArr : new Float32Array(nArr.subarray(0, vN * 3)),
+ full ? uArr : new Float32Array(uArr.subarray(0, vN * 2)),
+ full ? cArr : new Float32Array(cArr.subarray(0, vN * 3)),
+ full ? iArr : (iArr instanceof Uint32Array ? new Uint32Array(iArr.subarray(0, iN)) : new Uint16Array(iArr.subarray(0, iN))),
+ asInstance
+ );
+ meshes.push(mesh);
+ vN = 0;
+ iN = 0;
+ };
+ for (let i = 0; i < uniq; i++) {
+ const base = i * faceN;
+ const x = xs[i];
+ const y = ys[i];
+ const z = zs[i];
+ const r = cr[i];
+ const g = cg[i];
+ const b = cb[i];
+ for (let f = 0; f < faceN; f++) {
+ if (!exposed[base + f]) continue;
+ const face = faces[f];
+ if (vN > 0 && vN + face.n > maxVerts) flushChunk(false);
+ const vBase = vN;
+ for (let k = 0; k < face.n; k++) {
+ const o = (vBase + k) * 3;
+ pArr[o] = face.px[k] + x;
+ pArr[o + 1] = face.py[k] + y;
+ pArr[o + 2] = face.pz[k] + z;
+ nArr[o] = face.nx[k];
+ nArr[o + 1] = face.ny[k];
+ nArr[o + 2] = face.nz[k];
+ const uo = (vBase + k) * 2;
+ uArr[uo] = face.u[k];
+ uArr[uo + 1] = face.v[k];
+ cArr[o] = r;
+ cArr[o + 1] = g;
+ cArr[o + 2] = b;
+ }
+ for (let t = 0; t < face.trisN; t++) iArr[iN++] = vBase + face.tris[t];
+ vN += face.n;
+ }
+ }
+ flushChunk(oneDraw && meshes.length === 0);
+ if (meshes.length === 1 && meshes[0].isInstancedMesh) {
+ scene.add(meshes[0]);
+ worldMesh = meshes[0];
+ worldDrawCount = 1;
+ } else {
+ const group = new THREE.Group();
+ group.name = 'world-voxels';
+ group.userData.worldVoxels = true;
+ group.userData.noOutline = true;
+ group.userData.batchKind = 'merged-faces';
+ group.frustumCulled = false;
+ group.matrixAutoUpdate = false;
+ group.updateMatrix();
+ for (let m = 0; m < meshes.length; m++) group.add(meshes[m]);
+ scene.add(group);
+ const anchor = new THREE.InstancedMesh(new THREE.BufferGeometry(), worldMat, 1);
+ anchor.count = 0;
+ anchor.visible = false;
+ anchor.frustumCulled = false;
+ anchor.userData.worldCountAnchor = true;
+ anchor.raycast = function () {};
+ scene.add(anchor);
+ worldMesh = group;
+ worldAnchor = anchor;
+ worldDrawCount = meshes.length;
+ }
  }
  function syncStationProps() {
  if (!courtyard) return;
@@ -4870,7 +5298,14 @@
  }
 
  // Shared inverted-hull ink. One material, shells created once per mesh, never per frame.
+ // Local shell matrices are baked. Parents still move them. The ink stays the same.
  let toonOutlineMat = null;
+ function outlineSkipRay() {}
+ function bakeStillMatrix(mesh) {
+ if (!mesh) return;
+ mesh.matrixAutoUpdate = false;
+ mesh.updateMatrix();
+ }
  function outlineMaterial() {
  if (toonOutlineMat) return toonOutlineMat;
  toonOutlineMat = new THREE.MeshBasicMaterial({
@@ -4909,7 +5344,8 @@
  shell.receiveShadow = false;
  shell.renderOrder = (mesh.renderOrder || 0) + 1;
  shell.scale.set(boost(sx), boost(sy), boost(sz));
- shell.raycast = function () {};
+ shell.raycast = outlineSkipRay;
+ bakeStillMatrix(shell);
  mesh.add(shell);
  return 1;
  }
@@ -4933,9 +5369,183 @@
  mesh.castShadow = false;
  mesh.receiveShadow = false;
  mesh.renderOrder = 1;
- mesh.raycast = function () {};
+ mesh.raycast = outlineSkipRay;
  castleOutline.add(mesh);
  return mesh;
+ }
+ function mergeCastleInk(root) {
+ const sources = [];
+ root.traverse(function (obj) {
+ if (obj.isMesh && obj.name === 'castle-toon-outline' && obj.geometry && obj.geometry.attributes && obj.geometry.attributes.position) sources.push(obj);
+ });
+ castleInkSources = sources.length;
+ if (sources.length < 2) {
+ castleInkDraws = sources.length;
+ return;
+ }
+ let vertCount = 0;
+ let indexCount = 0;
+ for (let s = 0; s < sources.length; s++) {
+ const g = sources[s].geometry;
+ const pc = g.attributes.position.count;
+ vertCount += pc;
+ indexCount += g.index ? g.index.count : pc;
+ }
+ const positions = new Float32Array(vertCount * 3);
+ const normals = new Float32Array(vertCount * 3);
+ const indices = vertCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+ const v = new THREE.Vector3();
+ const n = new THREE.Vector3();
+ const nm = new THREE.Matrix3();
+ let vBase = 0;
+ let iBase = 0;
+ for (let s = 0; s < sources.length; s++) {
+ const mesh = sources[s];
+ mesh.updateMatrix();
+ const mat = mesh.matrix;
+ nm.getNormalMatrix(mat);
+ const g = mesh.geometry;
+ const pos = g.attributes.position;
+ const nor = g.attributes.normal;
+ for (let i = 0; i < pos.count; i++) {
+ v.fromBufferAttribute(pos, i).applyMatrix4(mat);
+ const o = (vBase + i) * 3;
+ positions[o] = v.x;
+ positions[o + 1] = v.y;
+ positions[o + 2] = v.z;
+ if (nor) n.fromBufferAttribute(nor, i).applyMatrix3(nm);
+ else n.set(0, 0, 1);
+ normals[o] = n.x;
+ normals[o + 1] = n.y;
+ normals[o + 2] = n.z;
+ }
+ if (g.index) {
+ for (let i = 0; i < g.index.count; i++) indices[iBase++] = vBase + g.index.getX(i);
+ } else {
+ for (let i = 0; i < pos.count; i++) indices[iBase++] = vBase + i;
+ }
+ vBase += pos.count;
+ mesh.visible = false;
+ }
+ const geo = new THREE.BufferGeometry();
+ geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+ geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+ geo.setIndex(new THREE.BufferAttribute(indices, 1));
+ geo.computeBoundingBox();
+ geo.computeBoundingSphere();
+ const batch = new THREE.Mesh(geo, outlineMaterial());
+ batch.name = 'castle-ink-batch';
+ batch.userData.isOutline = true;
+ batch.userData.noOutline = true;
+ batch.castShadow = false;
+ batch.receiveShadow = false;
+ batch.renderOrder = 1;
+ batch.raycast = outlineSkipRay;
+ bakeStillMatrix(batch);
+ root.add(batch);
+ castleInkDraws = 1;
+ }
+ function sealStaticParts(root) {
+ if (!root || !root.children || root.children.length < 2) return 0;
+ const kids = root.children.slice();
+ const order = [];
+ const buckets = Object.create(null);
+ for (let i = 0; i < kids.length; i++) {
+ const m = kids[i];
+ if (!m || !m.isMesh || !m.geometry || !m.geometry.attributes || !m.geometry.attributes.position) continue;
+ if (m.children && m.children.length > 0) continue;
+ if (Array.isArray(m.material) || !m.material) continue;
+ const ud = m.userData || {};
+ if (ud.isOutline || ud.noBatch || ud.shopPart || ud.isHitFx || ud.sealed || ud.worldVoxels) continue;
+ const key = m.material.uuid + '|' + (m.castShadow ? 'c' : '') + (m.receiveShadow ? 'r' : '');
+ let bucket = buckets[key];
+ if (!bucket) {
+ bucket = { mat: m.material, cast: !!m.castShadow, receive: !!m.receiveShadow, list: [] };
+ buckets[key] = bucket;
+ order.push(bucket);
+ }
+ bucket.list.push(m);
+ }
+ let made = 0;
+ for (let b = 0; b < order.length; b++) {
+ const bucket = order[b];
+ if (bucket.list.length < 2) continue;
+ let vertCount = 0;
+ let indexCount = 0;
+ for (let i = 0; i < bucket.list.length; i++) {
+ const g = bucket.list[i].geometry;
+ const pc = g.attributes.position.count;
+ vertCount += pc;
+ indexCount += g.index ? g.index.count : pc;
+ }
+ const positions = new Float32Array(vertCount * 3);
+ const normals = new Float32Array(vertCount * 3);
+ const uvs = new Float32Array(vertCount * 2);
+ const indices = vertCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+ const v = new THREE.Vector3();
+ const n = new THREE.Vector3();
+ const nm = new THREE.Matrix3();
+ let hasUv = false;
+ let vBase = 0;
+ let iBase = 0;
+ const deadGeo = [];
+ for (let i = 0; i < bucket.list.length; i++) {
+ const mesh = bucket.list[i];
+ mesh.updateMatrix();
+ const mat = mesh.matrix;
+ nm.getNormalMatrix(mat);
+ const g = mesh.geometry;
+ const pos = g.attributes.position;
+ const nor = g.attributes.normal;
+ const uv = g.attributes.uv;
+ if (uv) hasUv = true;
+ for (let k = 0; k < pos.count; k++) {
+ v.fromBufferAttribute(pos, k).applyMatrix4(mat);
+ const o = (vBase + k) * 3;
+ positions[o] = v.x;
+ positions[o + 1] = v.y;
+ positions[o + 2] = v.z;
+ if (nor) n.fromBufferAttribute(nor, k).applyMatrix3(nm);
+ else n.set(0, 1, 0);
+ normals[o] = n.x;
+ normals[o + 1] = n.y;
+ normals[o + 2] = n.z;
+ const uo = (vBase + k) * 2;
+ if (uv) {
+ uvs[uo] = uv.getX(k);
+ uvs[uo + 1] = uv.getY(k);
+ }
+ }
+ if (g.index) {
+ for (let k = 0; k < g.index.count; k++) indices[iBase++] = vBase + g.index.getX(k);
+ } else {
+ for (let k = 0; k < pos.count; k++) indices[iBase++] = vBase + k;
+ }
+ vBase += pos.count;
+ if (deadGeo.indexOf(g) < 0) deadGeo.push(g);
+ root.remove(mesh);
+ }
+ const geo = new THREE.BufferGeometry();
+ geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+ geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+ if (hasUv) geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+ geo.setIndex(new THREE.BufferAttribute(indices, 1));
+ geo.computeBoundingBox();
+ geo.computeBoundingSphere();
+ const merged = new THREE.Mesh(geo, bucket.mat);
+ merged.castShadow = bucket.cast;
+ merged.receiveShadow = bucket.receive;
+ merged.userData.noOutline = true;
+ merged.userData.sealed = true;
+ merged.raycast = outlineSkipRay;
+ bakeStillMatrix(merged);
+ root.add(merged);
+ for (let d = 0; d < deadGeo.length; d++) deadGeo[d].dispose();
+ sealedSources += bucket.list.length;
+ sealedDraws += 1;
+ made++;
+ }
+ return made;
  }
  function buildCastleOutlines() {
  if (castleOutline) return;
@@ -4972,6 +5582,8 @@
  ring(0, 19.5, 4.16, 3.0, 16.5);
  ring(-13.5, 14.5, 3.66, 3.0, 14.5);
  ring(13.5, 14.5, 3.66, 3.0, 14.5);
+ castleOutline.traverse(function (obj) { bakeStillMatrix(obj); });
+ mergeCastleInk(castleOutline);
  scene.add(castleOutline);
  }
  function castleWearSkipRay() {}
@@ -6221,6 +6833,7 @@
 
  merch.position.set(SHOP_X, FLOOR_Y, SHOP_Z + 1.05);
  merch.userData.shopPart = 'merchant';
+ sealStaticParts(merch);
  shopGroup.add(merch);
 
  // 4. Overhead "GUNS" Sign mounted directly OVER the merchant's head on two stall posts!
@@ -6270,6 +6883,7 @@
  gun.position.set(SHOP_X + item.dx, FLOOR_Y + 1.18, SHOP_Z + item.dz);
  gun.rotation.y = item.ry;
  gun.rotation.z = 0.06;
+ sealStaticParts(gun);
  shopGroup.add(gun);
  });
 
@@ -6285,6 +6899,7 @@
  const gr = createGrenadeMesh(dg.type, 0.72);
  gr.position.set(SHOP_X + dg.dx, FLOOR_Y + 1.24, SHOP_Z + dg.dz);
  gr.rotation.y = (dg.dx * 3.1) % 6.28;
+ sealStaticParts(gr);
  shopGroup.add(gr);
  });
 
@@ -6537,7 +7152,8 @@
  return shopWeaponHave(index | 0, weaponIdx);
  }
  function cycleIdsFor(index) {
- const list = [];
+ const list = cycleIdScratch;
+ list.length = 0;
  if (!state.weapons) return list;
  const who = index | 0;
  for (let i = 0; i < state.weapons.length; i++) {
@@ -6609,24 +7225,19 @@
  const solo = document.getElementById('scope-overlay');
  const soloCh = document.getElementById('crosshair');
  if (numPlayers <= 1) {
- if (solo) solo.style.display = state.scoped ? 'block' : 'none';
- if (soloCh) {
- soloCh.style.display = state.scoped ? 'none' : 'block';
- soloCh.style.opacity = (state.ads && !state.scoped) ? '0.45' : '1';
- }
- for (let i = 0; i < 4; i++) {
- const el = document.getElementById('vp-scope-' + i);
- if (el) el.style.display = 'none';
- }
+ hudSetStyle(solo, 'display', state.scoped ? 'block' : 'none');
+ hudSetStyle(soloCh, 'display', state.scoped ? 'none' : 'block');
+ hudSetStyle(soloCh, 'opacity', (state.ads && !state.scoped) ? '0.45' : '1');
+ for (let i = 0; i < 4; i++) hudSetStyle(document.getElementById('vp-scope-' + i), 'display', 'none');
  return;
  }
- if (solo) solo.style.display = 'none';
- if (soloCh) soloCh.style.display = 'none';
+ hudSetStyle(solo, 'display', 'none');
+ hudSetStyle(soloCh, 'display', 'none');
  for (let i = 0; i < 4; i++) {
  const el = document.getElementById('vp-scope-' + i);
  const ch = document.getElementById('vp-ch-' + i);
  if (i >= numPlayers) {
- if (el) el.style.display = 'none';
+ hudSetStyle(el, 'display', 'none');
  continue;
  }
  let ads = false;
@@ -6644,15 +7255,10 @@
  if (scoped) label = scopeZoomLabel(WEAPON_DEFS[ep.weaponIdx]);
  }
  }
- if (el) {
- el.style.display = scoped ? 'block' : 'none';
- const lab = el.querySelector('.vp-scope-label');
- if (lab && scoped) lab.textContent = label;
- }
- if (ch) {
- ch.style.display = scoped ? 'none' : 'block';
- ch.style.opacity = (ads && !scoped) ? '0.45' : '1';
- }
+ hudSetStyle(el, 'display', scoped ? 'block' : 'none');
+ if (scoped) hudSetText(el ? el.querySelector('.vp-scope-label') : null, label);
+ hudSetStyle(ch, 'display', scoped ? 'none' : 'block');
+ hudSetStyle(ch, 'opacity', (ads && !scoped) ? '0.45' : '1');
  }
  }
 
@@ -6684,7 +7290,7 @@
  camera.fov = w.def.scopeFov || 22;
  camera.updateProjectionMatrix();
  const zoomX = w.def.id === 'barrett' ? '5x' : '4x';
- document.getElementById('scope-label').textContent = `${w.def.name.toUpperCase()} (${zoomX}) — PRESS [2] TO EXIT`;
+ hudSetText(document.getElementById('scope-label'), `${w.def.name.toUpperCase()} (${zoomX}) — PRESS [2] TO EXIT`);
  playTone(420, 620, 0.06, 0.1, 'sine');
  } else {
  // Iron-sight ADS for all non-scope weapons!
@@ -6797,8 +7403,8 @@
  function paintThrowableChip(el, index) {
  if (!el) return;
  const type = equippedThrowable(index);
- el.textContent = throwableHudText(index);
- el.className = throwableHudClass(type);
+ hudSetText(el, throwableHudText(index));
+ hudSetClass(el, throwableHudClass(type));
  }
  function cycleGrenadeType(actor, dir) {
  const step = (dir < 0) ? -1 : 1;
@@ -6852,11 +7458,11 @@
  }
 
  function hitCollider(x, z) {
- for (let i = 0; i < colliders.length; i++) {
- const c = colliders[i];
- if (x > c.minX - 0.5 && x < c.maxX + 0.5 && z > c.minZ - 0.5 && z < c.maxZ + 0.5) return true;
+ return colliderBlocked(x, z, 0.5);
  }
- return false;
+ function playerBlocked(x, z) {
+ if (outsideActor(x, z, false)) return true;
+ return hitCollider(x, z);
  }
 
  function hazardAt(x, z) {
@@ -6878,7 +7484,10 @@
  const zone = snowZones[i];
  if (Math.hypot(x - zone.x, z - zone.z) <= zone.r) snow = true;
  }
- return { ice: ice, snow: snow, iceMul: iceMul };
+ hazardScratch.ice = ice;
+ hazardScratch.snow = snow;
+ hazardScratch.iceMul = iceMul;
+ return hazardScratch;
  }
 
  function horizontalVelocity(actor, dirX, dirZ, baseSpd, dt) {
@@ -6908,7 +7517,7 @@
  slide.x = slide.lx;
  slide.z = slide.lz;
  }
- return { x: slide.x, z: slide.z };
+ return slide;
  }
 
  function isWaterOrBridgeDropZone(x, z) {
@@ -6959,11 +7568,7 @@
  const e = playableEnvelope();
  if (!(x > e.minX && x < e.maxX && z > e.minZ && z < e.maxZ)) return true;
  if (isWaterOrBridgeDropZone(x, z)) return true;
- for (let i = 0; i < colliders.length; i++) {
- const c = colliders[i];
- if (x > c.minX - 0.45 && x < c.maxX + 0.45 && z > c.minZ - 0.45 && z < c.maxZ + 0.45) return true;
- }
- return false;
+ return colliderBlocked(x, z, 0.45);
  }
 
  function nearestPlayableXZ(x, z) {
@@ -7025,13 +7630,14 @@
  let framePadPolls = 0;
  function pollGamepadsOnce() {
  framePadPolls++;
- if (!navigator.getGamepads) { framePads = []; return framePads; }
+ framePadList.length = 0;
+ if (navigator.getGamepads) {
  const raw = navigator.getGamepads();
- const list = [];
  for (let i = 0; i < raw.length; i++) {
- if (raw[i] && raw[i].connected) list.push(raw[i]);
+ if (raw[i] && raw[i].connected) framePadList.push(raw[i]);
  }
- framePads = list;
+ }
+ framePads = framePadList;
  return framePads;
  }
  function getConnectedGamepads() {
@@ -8460,6 +9066,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const MINE_SELECT_CODES = ['KeyM', 'Numpad2', 'KeyI', 'KeyP'];
  const mineKeyPrev = [{ d: false, s: false }, { d: false, s: false }, { d: false, s: false }, { d: false, s: false }];
  const particles = [];
+ const voxelFree = [];
+ let voxelBorn = 0;
+ let voxelReuse = 0;
  const partGeo = new THREE.BoxGeometry(0.18, 0.18, 0.18);
  const particleMatCache = new Map();
  const boxGeoCache = new Map();
@@ -8608,6 +9217,27 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  });
  }
 
+ function takeVoxel(mat) {
+ let bit = voxelFree.pop();
+ if (bit) {
+ voxelReuse++;
+ bit.mesh.material = mat;
+ } else {
+ voxelBorn++;
+ const mesh = new THREE.Mesh(partGeo, mat);
+ mesh.matrixAutoUpdate = false;
+ mesh.castShadow = false;
+ mesh.receiveShadow = false;
+ mesh.userData.noOutline = true;
+ mesh.userData.voxelBit = true;
+ scene.add(mesh);
+ bit = { mesh: mesh, vel: new THREE.Vector3(), life: 0 };
+ }
+ bit.mesh.visible = true;
+ bit.mesh.rotation.set(0, 0, 0);
+ bit.mesh.scale.set(1, 1, 1);
+ return bit;
+ }
  function spawnVoxelBurst(pos, hex, count = 10, speed = 5.5) {
  let mat = particleMatCache.get(hex);
  if (!mat) {
@@ -8615,16 +9245,28 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  particleMatCache.set(hex, mat);
  }
  for (let i = 0; i < count; i++) {
- const m = new THREE.Mesh(partGeo, mat);
- m.position.copy(pos);
- const vel = new THREE.Vector3(
+ const bit = takeVoxel(mat);
+ bit.mesh.position.copy(pos);
+ bit.vel.set(
  (Math.random() - 0.5) * speed * 2,
  Math.random() * speed * 1.3 + 1.5,
  (Math.random() - 0.5) * speed * 2
  );
- scene.add(m);
- particles.push({ mesh: m, vel, life: 0.55 + Math.random() * 0.45 });
+ bit.life = 0.55 + Math.random() * 0.45;
+ bit.mesh.updateMatrix();
+ particles.push(bit);
  }
+ }
+ function voxelInfo() {
+ let hidden = 0;
+ for (let i = 0; i < voxelFree.length; i++) if (!voxelFree[i].mesh.visible) hidden++;
+ return {
+ live: particles.length,
+ pooled: voxelFree.length,
+ born: voxelBorn,
+ reuse: voxelReuse,
+ hidden: hidden
+ };
  }
 
  const tracers = [];
@@ -8656,6 +9298,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const hitFxRoot = new THREE.Group();
  hitFxRoot.name = 'hit-fx-pool';
  hitFxRoot.frustumCulled = false;
+ hitFxRoot.matrixAutoUpdate = false;
+ hitFxRoot.updateMatrix();
  const hitFlashMat = new THREE.MeshBasicMaterial({ color: 0xfff6d0, transparent: true, opacity: 0.92, depthWrite: false, toneMapped: false });
  const hitSparkMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 1, depthWrite: false, toneMapped: false });
  const coinPopMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 1, depthWrite: false, toneMapped: false });
@@ -8691,7 +9335,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  mesh.castShadow = false;
  mesh.receiveShadow = false;
  mesh.renderOrder = 3;
- mesh.raycast = function () {};
+ mesh.matrixAutoUpdate = false;
+ mesh.raycast = outlineSkipRay;
+ mesh.updateMatrix();
  hitFxRoot.add(mesh);
  return { mesh: mesh, kind: kind, life: 0, max: 0.2, vx: 0, vy: 0, vz: 0, base: 1 };
  }
@@ -8747,6 +9393,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  slot.mesh.visible = true;
  slot.mesh.position.set(x, y, z);
  slot.mesh.scale.set(base, base, base);
+ slot.mesh.updateMatrix();
  }
  function burstCombatHit(x, y, z) {
  const lim = enforceHitFxBudget();
@@ -8797,6 +9444,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  s.life = 0;
  s.mesh.visible = false;
  }
+ s.mesh.updateMatrix();
  }
  }
  function updateHitFx(dt) {
@@ -8848,13 +9496,21 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  spawnVoxelBurst(pos, 0xfef08a, 14, 6.5);
  spawnVoxelBurst(pos, 0x334155, 10, 5.0);
 
+ const near = bucketMarkNear(pos.x, pos.z, radius, false);
+ try {
  for (let i = monsters.length - 1; i >= 0; i--) {
  const m = monsters[i];
+ if (!near.has(m)) continue;
  const d = m.mesh.position.distanceTo(pos);
  if (d <= radius) {
  const falloff = 1 - (d / radius) * 0.55;
- damageMonster(m, Math.round(maxDmg * falloff), m.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false, attackerIndex);
+ scratchHurt.copy(m.mesh.position);
+ scratchHurt.y += 1;
+ damageMonster(m, Math.round(maxDmg * falloff), scratchHurt, false, attackerIndex);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  }
 
@@ -8902,12 +9558,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  scene.add(g);
  fireZones.push({ pos: new THREE.Vector3(pos.x, gy, pos.z), life: duration, tick: 0, radius, group: g });
 
+ const near = bucketMarkNear(pos.x, pos.z, radius, false);
+ try {
  for (let i = monsters.length - 1; i >= 0; i--) {
  const m = monsters[i];
+ if (!near.has(m)) continue;
  if (m.mesh.position.distanceTo(pos) <= radius) {
  m.burnTimer = Math.max(m.burnTimer, 5.5);
  damageMonster(m, 95, m.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  }
 
@@ -8974,7 +9636,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  scene.add(gMesh);
 
  const speed = gType === 'thermite' ? 27 : 22;
- const vel = dir.multiplyScalar(speed).add(new THREE.Vector3(0, 5.0, 0));
+ dir.multiplyScalar(speed);
+ dir.y += 5.0;
+ const vel = dir;
  let grenadeOwner = 0;
  if (actor && !actor.isP1 && typeof actor.index === 'number') grenadeOwner = actor.index;
  projectiles.push({ mesh: gMesh, vel, type: 'grenade', gType, fuse: 2.2, radius: 7.5, dmg: 270, owner: grenadeOwner });
@@ -9242,9 +9906,12 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  mineBlasts.length = 0;
  }
  function enemyOnMine(mine) {
+ const near = bucketMarkNear(mine.x, mine.z, MINE_TRIGGER + 0.85, false);
+ try {
  for (let j = 0; j < monsters.length; j++) {
  const m = monsters[j];
  if (!m || m.hp <= 0 || !m.mesh) continue;
+ if (!near.has(m)) continue;
  const horiz = Math.hypot(m.mesh.position.x - mine.x, m.mesh.position.z - mine.z);
  const scale = (m.base && m.base.scale) || 1;
  const reach = MINE_TRIGGER + Math.min(0.85, Math.max(0, scale - 1) * 0.35);
@@ -9254,6 +9921,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return true;
  }
  return false;
+ } finally {
+ releaseSet(near);
+ }
  }
  function detonateMine(index) {
  const mine = placedMines[index];
@@ -9565,7 +10235,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const isFire = state.specialAmmo.type === 'fire' && state.specialAmmo.timer > 0;
  const isTracer = state.specialAmmo.type === 'tracer' && state.specialAmmo.timer > 0;
  const dmgMult = (state.buffs.doubleDmg > 0 ? 2.0 : 1.0) * (isAP ? 1.5 : 1.0);
- const hitTargets = bulletRoots(true);
+ const shotRoots = collectShotRoots(true);
  let riderIndex = 0;
  if (useCam !== camera) {
  const rider = extraPlayers.find(ep => ep.cam === useCam);
@@ -9576,14 +10246,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const spread = (useAds ? 0.012 : 0.022) * (isTracer ? 0.72 : 1.0);
  const sx = (Math.random() - 0.5) * spread;
  const sy = (Math.random() - 0.5) * spread;
- raycaster.setFromCamera(new THREE.Vector2(sx, sy), useCam);
+ scratchNdc.set(sx, sy);
+ raycaster.setFromCamera(scratchNdc, useCam);
+ const hitTargets = shotPick(raycaster.ray, shotRoots, true);
  const hits = raycaster.intersectObjects(hitTargets, true);
 
  const sideOff = t.toggle ? 0.24 : -0.24;
- const startPt = new THREE.Vector3(sideOff, -0.18, -1.2).applyMatrix4(useCam.matrixWorld);
- let endPt = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(120));
+ const startPt = scratchStart.set(sideOff, -0.18, -1.2).applyMatrix4(useCam.matrixWorld);
+ scratchEnd.copy(raycaster.ray.origin).addScaledVector(raycaster.ray.direction, 120);
+ let endPt = scratchEnd;
 
- const hitSet = new Set();
+ hitSetScratch.clear();
+ const hitSet = hitSetScratch;
  let pierced = 0;
  for (const hit of hits) {
  const ud0 = hit.object.userData || {};
@@ -9926,11 +10600,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  spawnVoxelBurst(pos, 0xfef08a, 14, 7.0);
  spawnVoxelBurst(pos, 0x334155, 10, 5.5);
  // Damage nearby monsters (chain reaction!)
+ const near = bucketMarkNear(pos.x, pos.z, 5.5, false);
+ try {
  for (let i = monsters.length - 1; i >= 0; i--) {
  const other = monsters[i];
+ if (!near.has(other)) continue;
  if (other.hp > 0 && other.mesh.position.distanceTo(pos) <= 5.5) {
  damageMonster(other, 95, other.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  // Damage player if caught in blast radius
  if (!settings.infiniteMode && player.pos.distanceTo(pos) <= 5.2) {
@@ -9965,6 +10645,200 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  // VOXEL MONSTERS & WAVE DIRECTOR
  // =========================================================================
  const monsters = [];
+ // Update 7 stage 3 — foe cells. Hit order stays the monster-array order.
+ const MZ_CELL = 8;
+ const mzMap = Object.create(null);
+ const mzKeys = [];
+ const mzPool = [];
+ const mzSetPool = [];
+ let mzGen = 1;
+ let mzBuilt = 0;
+ let mzMaxScale = 1;
+ let mzMaxShotR = 8;
+ let rayQueries = 0;
+ let rayRoots = 0;
+ let rayCandidates = 0;
+ const frozenList = [];
+ let frozenFrame = -1;
+ let aiSteerSteps = 0;
+ let aiSteerSkips = 0;
+ let aiAttackChecks = 0;
+ let aiAttackSkips = 0;
+ function aiInfo() {
+ return {
+ steerSteps: aiSteerSteps,
+ steerSkips: aiSteerSkips,
+ attackChecks: aiAttackChecks,
+ attackSkips: aiAttackSkips
+ };
+ }
+ function resetAiInfo() {
+ aiSteerSteps = 0;
+ aiSteerSkips = 0;
+ aiAttackChecks = 0;
+ aiAttackSkips = 0;
+ }
+ const mzPush = monsters.push.bind(monsters);
+ const mzSplice = monsters.splice.bind(monsters);
+ monsters.push = function () {
+ mzGen++;
+ const n = mzPush.apply(monsters, arguments);
+ for (let i = 0; i < arguments.length; i++) tagBucketMonster(arguments[i]);
+ return n;
+ };
+ monsters.splice = function () {
+ mzGen++;
+ return mzSplice.apply(monsters, arguments);
+ };
+ function mzKey(ix, iz) {
+ return (ix + 4096) + (iz + 4096) * 8192;
+ }
+ function shotRadiusOf(m) {
+ const scale = (m && m.base && m.base.scale) || 1;
+ let ms = 1;
+ if (m && m.mesh && m.mesh.scale) {
+ ms = Math.max(ms, Math.abs(m.mesh.scale.x), Math.abs(m.mesh.scale.y), Math.abs(m.mesh.scale.z));
+ }
+ return 6.5 * scale * ms + 0.75;
+ }
+ function tagBucketMonster(m) {
+ if (!m || !m.mesh) return;
+ if (!m.mesh.userData) m.mesh.userData = {};
+ m.mesh.userData.bucketMonster = m;
+ const r = shotRadiusOf(m);
+ m._shotR = r;
+ if (r > mzMaxShotR) mzMaxShotR = r;
+ const scale = (m.base && m.base.scale) || 1;
+ if (scale > mzMaxScale) mzMaxScale = scale;
+ }
+ function ensureMonsterGrid(force) {
+ if (force) mzGen++;
+ if (mzBuilt === mzGen) return;
+ mzBuilt = mzGen;
+ for (let i = 0; i < mzKeys.length; i++) {
+ const key = mzKeys[i];
+ const bucket = mzMap[key];
+ if (bucket) {
+ bucket.length = 0;
+ mzPool.push(bucket);
+ }
+ mzMap[key] = undefined;
+ }
+ mzKeys.length = 0;
+ let maxS = 1;
+ let maxR = 8;
+ for (let i = 0; i < monsters.length; i++) {
+ const m = monsters[i];
+ if (!m || !m.mesh) continue;
+ const scale = (m.base && m.base.scale) || 1;
+ if (scale > maxS) maxS = scale;
+ const r = shotRadiusOf(m);
+ m._shotR = r;
+ if (r > maxR) maxR = r;
+ const ix = Math.floor(m.mesh.position.x / MZ_CELL);
+ const iz = Math.floor(m.mesh.position.z / MZ_CELL);
+ const key = mzKey(ix, iz);
+ let bucket = mzMap[key];
+ if (!bucket) {
+ bucket = mzPool.length ? mzPool.pop() : [];
+ bucket.length = 0;
+ mzMap[key] = bucket;
+ mzKeys.push(key);
+ }
+ bucket.push(m);
+ }
+ mzMaxScale = maxS;
+ mzMaxShotR = maxR;
+ }
+ function borrowSet() {
+ const set = mzSetPool.length ? mzSetPool.pop() : new Set();
+ set.clear();
+ return set;
+ }
+ function releaseSet(set) {
+ if (!set) return;
+ set.clear();
+ mzSetPool.push(set);
+ }
+ function addBucketMonsters(set, ix, iz, pad) {
+ for (let gz = -pad; gz <= pad; gz++) {
+ for (let gx = -pad; gx <= pad; gx++) {
+ const bucket = mzMap[mzKey(ix + gx, iz + gz)];
+ if (!bucket) continue;
+ for (let i = 0; i < bucket.length; i++) set.add(bucket[i]);
+ }
+ }
+ }
+ function bucketMarkNear(x, z, radius, force) {
+ ensureMonsterGrid(!!force);
+ const set = borrowSet();
+ const reach = (radius || 0) + 0.05;
+ const pad = Math.floor(reach / MZ_CELL) + 1;
+ addBucketMonsters(set, Math.floor(x / MZ_CELL), Math.floor(z / MZ_CELL), pad);
+ return set;
+ }
+ function bucketMarkSegment(x0, z0, x1, z1, radius) {
+ ensureMonsterGrid(false);
+ const set = borrowSet();
+ const reach = (radius || 0) + 0.05;
+ const pad = Math.floor(reach / MZ_CELL) + 1;
+ const dist = Math.hypot(x1 - x0, z1 - z0);
+ const steps = Math.max(1, Math.ceil(dist / MZ_CELL));
+ for (let s = 0; s <= steps; s++) {
+ const t = s / steps;
+ const x = x0 + (x1 - x0) * t;
+ const z = z0 + (z1 - z0) * t;
+ addBucketMonsters(set, Math.floor(x / MZ_CELL), Math.floor(z / MZ_CELL), pad);
+ }
+ return set;
+ }
+ function bucketMarkRay(ray) {
+ ensureMonsterGrid(false);
+ const set = borrowSet();
+ const pad = Math.ceil(mzMaxShotR / MZ_CELL) + 1;
+ const ox = ray.origin.x;
+ const oz = ray.origin.z;
+ const dx = ray.direction.x;
+ const dz = ray.direction.z;
+ const hlen = Math.hypot(dx, dz);
+ if (hlen < 1e-8) {
+ addBucketMonsters(set, Math.floor(ox / MZ_CELL), Math.floor(oz / MZ_CELL), pad);
+ return set;
+ }
+ const ux = dx / hlen;
+ const uz = dz / hlen;
+ const maxXZ = 400;
+ const steps = Math.min(96, Math.ceil(maxXZ / MZ_CELL));
+ for (let s = 0; s <= steps; s++) {
+ const dist = Math.min(maxXZ, s * MZ_CELL);
+ addBucketMonsters(set, Math.floor((ox + ux * dist) / MZ_CELL), Math.floor((oz + uz * dist) / MZ_CELL), pad);
+ }
+ return set;
+ }
+ function countFrozenSolids() {
+ let n = 0;
+ for (let i = 0; i < monsters.length; i++) {
+ const fro = monsters[i];
+ if (!fro || fro.hp <= 0 || !fro.mesh) continue;
+ if ((fro.freezeTimer || 0) <= 0) continue;
+ if (fro.base && fro.base.flying) continue;
+ n++;
+ }
+ return n;
+ }
+ function ensureFrozenList() {
+ const frame = window.__bastionFrames || 0;
+ if (frozenFrame === frame) return;
+ frozenFrame = frame;
+ frozenList.length = 0;
+ for (let i = 0; i < monsters.length; i++) {
+ const fro = monsters[i];
+ if (!fro || fro.hp <= 0 || !fro.mesh) continue;
+ if ((fro.freezeTimer || 0) <= 0) continue;
+ if (fro.base && fro.base.flying) continue;
+ frozenList.push(fro);
+ }
+ }
  const MONSTER_TYPES = {
  stalker: { name: 'Forest Stalker', hp: 65, speed: 4.5, dmg: 10, gateDmg: 10, xp: 24, scale: 1.0, bodyCol: 0x2e7d32, headCol: 0x4caf50, eyeCol: 0xff1744 },
  sprinter: { name: 'Shadow Runner', hp: 48, speed: 7.4, dmg: 8, gateDmg: 8, xp: 28, scale: 0.85, bodyCol: 0x111827, headCol: 0x1f2937, eyeCol: 0xf43f5e },
@@ -11367,9 +12241,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  function monsterAroundPoint(point) {
  let body = null;
  let head = null;
+ ensureMonsterGrid(false);
+ const near = bucketMarkNear(point.x, point.z, mzMaxShotR, false);
+ try {
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
  if (!m || m.hp <= 0 || !m.mesh) continue;
+ if (!near.has(m)) continue;
  m.mesh.updateMatrixWorld(true);
  m.mesh.traverse(obj => {
  if (!obj.isMesh || !obj.geometry) return;
@@ -11384,13 +12262,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (head) return { m: head, isHead: true };
  if (body) return { m: body, isHead: false };
  return null;
+ } finally {
+ releaseSet(near);
+ }
  }
  function firstMonsterHit(index) {
  const ctx = shotContext(index);
  if (!ctx) return null;
- raycaster.setFromCamera(new THREE.Vector2(0, 0), ctx.cam);
- const roots = [];
- for (let i = 0; i < monsters.length; i++) roots.push(monsters[i].mesh);
+ scratchNdc.set(0, 0);
+ raycaster.setFromCamera(scratchNdc, ctx.cam);
+ monsterRootScratch.length = 0;
+ for (let i = 0; i < monsters.length; i++) if (monsters[i] && monsters[i].mesh) monsterRootScratch.push(monsters[i].mesh);
+ const roots = shotPick(raycaster.ray, monsterRootScratch, false);
  const hits = raycaster.intersectObjects(roots, true);
  for (let i = 0; i < hits.length; i++) {
  const m = monsterFromObject(hits[i].object);
@@ -11436,8 +12319,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  playGunshot(w.def.sound);
  } else playTone(220, 140, 0.05, 0.08, 'square');
  poseHeldWeapon(ctx.avatar, index <= 0 ? state.recoil : (actorEp(index) ? actorEp(index).recoil : 0));
- raycaster.setFromCamera(new THREE.Vector2(0, 0), ctx.cam);
- const roots = bulletRoots(false);
+ scratchNdc.set(0, 0);
+ raycaster.setFromCamera(scratchNdc, ctx.cam);
+ const roots = shotPick(raycaster.ray, collectShotRoots(false), true);
  const hits = raycaster.intersectObjects(roots, true);
  const startPt = muzzleWorld(index, 1);
  let endPt = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(110));
@@ -11836,9 +12720,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const steps = Math.max(1, Math.ceil(dist / 0.55));
  let best = null;
  let bestT = 99;
+ ensureMonsterGrid(false);
+ const near = bucketMarkSegment(prev.x, prev.z, next.x, next.z, Math.max(radius || 0, 1.15 * mzMaxScale, 1.7));
+ try {
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
  if (!m || m.hp <= 0 || !m.mesh) continue;
+ if (!near.has(m)) continue;
  const scale = (m.base && m.base.scale) || 1;
  const cy = m.debugTarget ? m.mesh.position.y : (m.mesh.position.y + 1.05 * scale);
  const cx = m.mesh.position.x;
@@ -11852,12 +12740,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const d = Math.sqrt((cx - x) * (cx - x) + (cy - y) * (cy - y) + (cz - z) * (cz - z));
  if (d <= reach && t < bestT) {
  bestT = t;
- best = { monster: m, point: new THREE.Vector3(x, y, z) };
+ scratchHit.set(x, y, z);
+ sweepHit.monster = m;
+ sweepHit.point = scratchHit;
+ best = sweepHit;
  break;
  }
  }
  }
  return best;
+ } finally {
+ releaseSet(near);
+ }
  }
  function sweepBoltGround(prev, next) {
  const steps = 8;
@@ -11867,7 +12761,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const y = prev.y + (next.y - prev.y) * t;
  const z = prev.z + (next.z - prev.z) * t;
  const gy = getGroundHeight(x, z);
- if (y <= gy + 0.16) return new THREE.Vector3(x, gy + 0.14, z);
+ if (y <= gy + 0.16) {
+ scratchHit.set(x, gy + 0.14, z);
+ return scratchHit;
+ }
  }
  return null;
  }
@@ -11983,12 +12880,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  function detonateStormAt(x, z, owner) {
  const list = monsters.slice();
+ const near = bucketMarkNear(x, z, 3.2, false);
+ try {
  for (let i = 0; i < list.length; i++) {
  const m = list[i];
  if (m.hp <= 0) continue;
+ if (!near.has(m)) continue;
  if (Math.hypot(m.mesh.position.x - x, m.mesh.position.z - z) <= 3.2) {
  damageMonster(m, 180, m.mesh.position.clone(), false, owner);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  if (!settings.infiniteMode) {
  if (Math.hypot(player.pos.x - x, player.pos.z - z) <= 3.2) {
@@ -12061,12 +12964,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (monster.hp > 0) slowMonster(monster, 1.7, 0.45);
  }
  const list = monsters.slice();
+ const near = bucketMarkNear(x, z, 2.6, false);
+ try {
  for (let i = 0; i < list.length; i++) {
  const other = list[i];
  if (!other || other === monster || other.hp <= 0 || !other.mesh) continue;
+ if (!near.has(other)) continue;
  if (Math.hypot(other.mesh.position.x - x, other.mesh.position.z - z) > 2.6) continue;
  damageMonster(other, Math.round((p.dmg || 42) * 0.45), other.mesh.position.clone(), false, owner);
  if (other.hp > 0) slowMonster(other, 1.4, 0.5);
+ }
+ } finally {
+ releaseSet(near);
  }
  cappedVoxelBurst(new THREE.Vector3(x, y + 0.4, z), 0xdc2626, 8, 4.2);
  cappedVoxelBurst(new THREE.Vector3(x, y + 0.6, z), 0xfacc15, 6, 3.2);
@@ -12078,11 +12987,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const y = monster && monster.mesh ? monster.mesh.position.y : point.y;
  if (monster) damageMonster(monster, p.dmg || 50, point, false, owner);
  const list = monsters.slice();
+ const near = bucketMarkNear(x, z, 1.8, false);
+ try {
  for (let i = 0; i < list.length; i++) {
  const other = list[i];
  if (!other || other === monster || other.hp <= 0 || !other.mesh) continue;
+ if (!near.has(other)) continue;
  if (Math.hypot(other.mesh.position.x - x, other.mesh.position.z - z) > 1.8) continue;
  damageMonster(other, Math.round((p.dmg || 50) * 0.4), other.mesh.position.clone(), false, owner);
+ }
+ } finally {
+ releaseSet(near);
  }
  cappedVoxelBurst(new THREE.Vector3(x, y + 0.4, z), 0xf97316, 8, 4);
  } else if (p.effect === 'egg') {
@@ -12099,11 +13014,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  stunSmall(monster);
  }
  const list = monsters.slice();
+ const near = bucketMarkNear(x, z, 1.7, false);
+ try {
  for (let i = 0; i < list.length; i++) {
  const other = list[i];
  if (!other || other === monster || other.hp <= 0 || !other.mesh) continue;
+ if (!near.has(other)) continue;
  if (Math.hypot(other.mesh.position.x - x, other.mesh.position.z - z) > 1.7) continue;
  stunSmall(other);
+ }
+ } finally {
+ releaseSet(near);
  }
  cappedVoxelBurst(new THREE.Vector3(x, y + 0.35, z), 0xf9a8d4, 6, 3.4);
  cappedVoxelBurst(new THREE.Vector3(x, y + 0.5, z), 0xfde68a, 4, 2.8);
@@ -12113,11 +13034,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const y = monster && monster.mesh ? monster.mesh.position.y : point.y;
  if (monster) damageMonster(monster, p.dmg || 64, point, false, owner);
  const list = monsters.slice();
+ const near = bucketMarkNear(x, z, 2.2, false);
+ try {
  for (let i = 0; i < list.length; i++) {
  const other = list[i];
  if (!other || other === monster || other.hp <= 0 || !other.mesh) continue;
+ if (!near.has(other)) continue;
  if (Math.hypot(other.mesh.position.x - x, other.mesh.position.z - z) > 2.2) continue;
  damageMonster(other, Math.round((p.dmg || 64) * 0.45), other.mesh.position.clone(), false, owner);
+ }
+ } finally {
+ releaseSet(near);
  }
  cappedVoxelBurst(new THREE.Vector3(x, y + 0.5, z), 0xef4444, 6, 4.2);
  cappedVoxelBurst(new THREE.Vector3(x, y + 0.7, z), 0xf8fafc, 5, 3.6);
@@ -12164,13 +13091,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p.fuse -= dt;
  return p.fuse <= 0;
  }
- const prev = p.mesh.position.clone();
+ scratchPrev.copy(p.mesh.position);
  p.mesh.position.addScaledVector(p.vel, dt);
  if ((julyFinale > 0 || julyBossLive()) && p.mesh) pokeSparkler(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z);
  p.fuse -= dt;
- if (p.vel && p.vel.lengthSq() > 1e-4) p.mesh.lookAt(p.mesh.position.clone().add(p.vel));
+ if (p.vel && p.vel.lengthSq() > 1e-4) {
+ scratchLook.copy(p.mesh.position).add(p.vel);
+ p.mesh.lookAt(scratchLook);
+ }
  if (p.type === 'round') return p.fuse <= 0;
- const next = p.mesh.position.clone();
+ scratchNext.copy(p.mesh.position);
+ const prev = scratchPrev;
+ const next = scratchNext;
  const hit = sweepBoltMonster(prev, next, p.hitRadius || 1.5);
  const nearGift = !hit ? giftNear(next, 0.95) : null;
  if (nearGift) {
@@ -12227,8 +13159,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  p.mesh.position.copy(ground);
  }
- const point = p.mesh.position.clone();
- if (p.effect === 'ember' || p.effect === 'storm' || p.effect === 'ornament' || p.effect === 'pumpkin' || p.effect === 'egg' || p.effect === 'firework' || p.effect === 'gold') resolveTravelHit(p, null, point);
+ scratchLook.copy(p.mesh.position);
+ if (p.effect === 'ember' || p.effect === 'storm' || p.effect === 'ornament' || p.effect === 'pumpkin' || p.effect === 'egg' || p.effect === 'firework' || p.effect === 'gold') resolveTravelHit(p, null, scratchLook);
  p.spent = true;
  p.vel.set(0, 0, 0);
  p.fuse = 0.35;
@@ -12462,9 +13394,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  function lobMonsterNear(p, rad) {
  let best = null;
  let bestD = rad;
+ ensureMonsterGrid(false);
+ const near = bucketMarkNear(p.mesh.position.x, p.mesh.position.z, Math.max(rad || 0, 2.4, 1.25 * mzMaxScale), false);
+ try {
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
  if (m.hp <= 0) continue;
+ if (!near.has(m)) continue;
  const scale = (m.base && m.base.scale) || 1;
  const cy = m.debugTarget ? m.mesh.position.y : (m.mesh.position.y + 1.05 * scale);
  const dx = m.mesh.position.x - p.mesh.position.x;
@@ -12475,17 +13411,26 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (d < reach && d < bestD + reach) { best = m; bestD = d; }
  }
  return best;
+ } finally {
+ releaseSet(near);
+ }
  }
  function lobMonsterXZ(x, z, rad) {
  let best = null;
  let bestD = rad;
+ const near = bucketMarkNear(x, z, rad, false);
+ try {
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
  if (m.hp <= 0) continue;
+ if (!near.has(m)) continue;
  const d = Math.hypot(m.mesh.position.x - x, m.mesh.position.z - z);
  if (d <= bestD) { best = m; bestD = d; }
  }
  return best;
+ } finally {
+ releaseSet(near);
+ }
  }
  function stickNetVisual(m) {
  if (!m || m.hp <= 0 || !m.mesh) return;
@@ -12631,9 +13576,12 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let bestAny = null;
  let dMark = 7;
  let dAny = 7;
+ const near = bucketMarkNear(origin.x, origin.z, 7, false);
+ try {
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
  if (!m || m.hp <= 0 || m === jump.from) continue;
+ if (!near.has(m)) continue;
  let used = false;
  for (let h = 0; h < jump.hit.length; h++) if (jump.hit[h] === m) used = true;
  if (used) continue;
@@ -12643,6 +13591,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if ((m.markTimer || 0) <= 0 && d < dMark) { dMark = d; bestMark = m; }
  }
  return bestMark || bestAny;
+ } finally {
+ releaseSet(near);
+ }
  }
  function fireChain(index, w) {
  const baseDmg = Math.round(90 * dmgMultOf(w, index));
@@ -12658,12 +13609,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  function strikeStorm(storm) {
  const list = monsters.slice();
+ const near = bucketMarkNear(storm.x, storm.z, 3.2, false);
+ try {
  for (let i = 0; i < list.length; i++) {
  const m = list[i];
  if (m.hp <= 0) continue;
+ if (!near.has(m)) continue;
  if (Math.hypot(m.mesh.position.x - storm.x, m.mesh.position.z - storm.z) <= 3.2) {
  damageMonster(m, 180, m.mesh.position.clone(), false, storm.owner);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  if (!settings.infiniteMode) {
  if (Math.hypot(player.pos.x - storm.x, player.pos.z - storm.z) <= 3.2) {
@@ -12787,9 +13744,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const w = castleWires[i];
  if (!segmentsCross(prevX, prevZ, x, z, w.ax, w.az, w.bx, w.bz)) continue;
  const victims = [];
+ const near = bucketMarkNear(x, z, 2.2, true);
+ try {
  for (let k = 0; k < monsters.length; k++) {
  const o = monsters[k];
+ if (!near.has(o)) continue;
  if (o.hp > 0 && Math.hypot(o.mesh.position.x - x, o.mesh.position.z - z) <= 2.2) victims.push(o);
+ }
+ } finally {
+ releaseSet(near);
  }
  for (let k = 0; k < victims.length; k++) {
  damageMonster(victims[k], 90, victims[k].mesh.position.clone(), false, w.owner);
@@ -13085,11 +14048,17 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (Math.hypot(ep.pos.x - c.x, ep.pos.z - c.z) <= 3.5) ep.hp = Math.min(ep.maxHp, ep.hp + 4);
  }
  const hitList = monsters.slice();
+ const near = bucketMarkNear(c.x, c.z, 3.5, false);
+ try {
  for (let m = 0; m < hitList.length; m++) {
  const mon = hitList[m];
+ if (!near.has(mon)) continue;
  if (mon.hp > 0 && Math.hypot(mon.mesh.position.x - c.x, mon.mesh.position.z - c.z) <= 3.5) {
  damageMonster(mon, 6, mon.mesh.position.clone(), false);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  }
  if (c.life <= 0) { dropMesh(c.mesh); castleCensers.splice(i, 1); }
@@ -13104,12 +14073,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (b.tick >= 0.5 - 1e-4) {
  b.tick -= 0.5;
  const hitList = monsters.slice();
+ const near = bucketMarkNear(b.x, b.z, b.radius, false);
+ try {
  for (let m = 0; m < hitList.length; m++) {
  const mon = hitList[m];
+ if (!near.has(mon)) continue;
  if (mon.hp > 0 && Math.hypot(mon.mesh.position.x - b.x, mon.mesh.position.z - b.z) <= b.radius) {
  damageMonster(mon, 8, mon.mesh.position.clone(), false, b.owner);
  if (mon.hp > 0) mon.burnTimer = Math.max(mon.burnTimer || 0, 1.2);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  if (Math.hypot(player.pos.x - b.x, player.pos.z - b.z) <= b.radius) state.hp = Math.min(state.maxHp, state.hp + 4);
  for (let p = 0; p < extraPlayers.length; p++) {
@@ -13258,7 +14233,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return;
  }
 
- const hitTargets = bulletRoots(true);
+ const shotRoots = collectShotRoots(true);
  const maxPierce = (w.def.pierce || 1) + (isAP ? 3 : 0);
  let spreadScale = state.scoped ? 0.15 : (state.ads ? 0.52 : 1.0);
  if (att.silencer) spreadScale *= 0.80;
@@ -13271,8 +14246,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  for (let p = 0; p < w.def.pellets; p++) {
  const spreadX = (Math.random() - 0.5) * w.def.spread * spreadScale;
  const spreadY = (Math.random() - 0.5) * w.def.spread * spreadScale;
- raycaster.setFromCamera(new THREE.Vector2(spreadX, spreadY), camera);
-
+ scratchNdc.set(spreadX, spreadY);
+ raycaster.setFromCamera(scratchNdc, camera);
+ const hitTargets = shotPick(raycaster.ray, shotRoots, true);
  const hits = raycaster.intersectObjects(hitTargets, true);
  const startPt = muzzlePt.clone();
  let endPt = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(110));
@@ -13547,18 +14523,72 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  while (top.parent && top.parent !== scene) top = top.parent;
  top.updateMatrixWorld(true);
  }
- function bulletRoots(withBells) {
- const roots = [];
+ function collectShotRoots(withBells) {
+ const roots = bulletRootScratch;
+ roots.length = 0;
  if (withBells !== false) {
  for (let i = 0; i < bellMeshes.length; i++) roots.push(bellMeshes[i]);
  }
  for (let i = 0; i < enemyBoulders.length; i++) roots.push(enemyBoulders[i].mesh);
  for (let i = 0; i < enemyTrees.length; i++) if ((enemyTrees[i].hp || 0) > 0) roots.push(enemyTrees[i].mesh);
  for (let i = 0; i < fuseCrates.length; i++) roots.push(fuseCrates[i].mesh);
- for (let i = 0; i < monsters.length; i++) roots.push(monsters[i].mesh);
+ for (let i = 0; i < monsters.length; i++) if (monsters[i] && monsters[i].mesh) roots.push(monsters[i].mesh);
  for (let i = 0; i < themeGifts.length; i++) if (themeGifts[i].hp > 0 && themeGifts[i].mesh) roots.push(themeGifts[i].mesh);
+ return roots;
+ }
+ function bulletRoots(withBells) {
+ const roots = collectShotRoots(withBells);
  for (let i = 0; i < roots.length; i++) syncShotRoot(roots[i]);
  return roots;
+ }
+ function rayHitsSphere(ray, x, y, z, radius) {
+ const dx = x - ray.origin.x;
+ const dy = y - ray.origin.y;
+ const dz = z - ray.origin.z;
+ const dirx = ray.direction.x;
+ const diry = ray.direction.y;
+ const dirz = ray.direction.z;
+ const t = dx * dirx + dy * diry + dz * dirz;
+ let qx = dx;
+ let qy = dy;
+ let qz = dz;
+ if (t > 0) {
+ qx = dx - dirx * t;
+ qy = dy - diry * t;
+ qz = dz - dirz * t;
+ }
+ return qx * qx + qy * qy + qz * qz <= radius * radius;
+ }
+ function shotPick(ray, roots, sync) {
+ rayQueries++;
+ const list = roots || [];
+ rayRoots += list.length;
+ const near = bucketMarkRay(ray);
+ const out = shotRootScratch;
+ out.length = 0;
+ try {
+ for (let i = 0; i < list.length; i++) {
+ const obj = list[i];
+ if (!obj) continue;
+ const tagged = obj.userData && obj.userData.bucketMonster;
+ if (tagged) {
+ if (!near.has(tagged)) continue;
+ const r = tagged._shotR || mzMaxShotR;
+ const px = tagged.mesh ? tagged.mesh.position.x : 0;
+ const py = tagged.mesh ? tagged.mesh.position.y : 0;
+ const pz = tagged.mesh ? tagged.mesh.position.z : 0;
+ if (!rayHitsSphere(ray, px, py, pz, r)) continue;
+ }
+ out.push(obj);
+ }
+ } finally {
+ releaseSet(near);
+ }
+ if (sync !== false) {
+ for (let i = 0; i < out.length; i++) syncShotRoot(out[i]);
+ }
+ rayCandidates += out.length;
+ return out;
  }
  function damageBoulder(bObj, dmg, point) {
  if (!bObj || bObj.hp <= 0) return;
@@ -13706,14 +14736,24 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ignoreThreat(owner, 3);
  }
  function avoidFrozenSolids(mover, fromX, fromZ, toX, toZ) {
- if (!mover || mover.hp <= 0 || (mover.freezeTimer || 0) > 0) return { x: toX, z: toZ };
+ if (!mover || mover.hp <= 0 || (mover.freezeTimer || 0) > 0) {
+ xzScratchB.x = toX;
+ xzScratchB.z = toZ;
+ return xzScratchB;
+ }
+ ensureFrozenList();
+ if (frozenList.length === 0) {
+ xzScratchB.x = toX;
+ xzScratchB.z = toZ;
+ return xzScratchB;
+ }
  let x = toX;
  let z = toZ;
  const mScale = (mover.base && mover.base.scale) || 1;
  const moverR = 0.5 * mScale;
  for (let pass = 0; pass < 2; pass++) {
- for (let i = 0; i < monsters.length; i++) {
- const fro = monsters[i];
+ for (let i = 0; i < frozenList.length; i++) {
+ const fro = frozenList[i];
  if (!fro || fro === mover || fro.hp <= 0 || !fro.mesh) continue;
  if ((fro.freezeTimer || 0) <= 0) continue;
  if (fro.base && fro.base.flying) continue;
@@ -13721,6 +14761,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const rad = 0.72 * fScale + moverR;
  const fx = fro.mesh.position.x;
  const fz = fro.mesh.position.z;
+ const win = Math.floor((rad + 0.25) / MZ_CELL) + 1;
+ const dix = Math.floor(x / MZ_CELL) - Math.floor(fx / MZ_CELL);
+ const diz = Math.floor(z / MZ_CELL) - Math.floor(fz / MZ_CELL);
+ if (dix > win || dix < -win || diz > win || diz < -win) continue;
  let dx = x - fx;
  let dz = z - fz;
  let dist = Math.hypot(dx, dz);
@@ -13758,7 +14802,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  }
- return { x: x, z: z };
+ xzScratchB.x = x;
+ xzScratchB.z = z;
+ return xzScratchB;
  }
  function bossMoveToward(m, x, z, speed, dt) {
  const scale = moveScaleFor(m);
@@ -14186,7 +15232,12 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  m.beamMesh = beam;
  }
  function livingOf(kind) {
- const list = [];
+ let list = livingPools[kind];
+ if (!list) {
+ list = [];
+ livingPools[kind] = list;
+ }
+ list.length = 0;
  for (let i = 0; i < monsters.length; i++) {
  const m = monsters[i];
  if (m.bossKind === kind && m.hp > 0 && m.mesh && m.mesh.parent && m.mesh.visible !== false) list.push(m);
@@ -14844,7 +15895,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let hp = 0;
  let max = 1;
  let phase = 1;
- let pips = [];
+ let pips = null;
  if (angels.length) {
  lead = angels[0];
  kind = 'angel';
@@ -14859,7 +15910,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  kind = 'warden';
  hp = lead.hp; max = lead.maxHp; phase = lead.bossPhase || 1;
  if (phase >= 3) {
- for (let i = 0; i < 3; i++) pips.push(false);
+ pips = [false, false, false];
  for (let i = 0; i < Math.min(3, shards.length); i++) pips[i] = true;
  }
  } else if (shards.length) {
@@ -14935,31 +15986,26 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const fillEl = document.getElementById('boss-hp-fill');
  const pipsEl = document.getElementById('boss-pips');
  const noteEl = document.getElementById('boss-note');
- if (solo) solo.style.display = (model && numPlayers <= 1) ? 'block' : 'none';
+ hudSetStyle(solo, 'display', (model && numPlayers <= 1) ? 'block' : 'none');
  if (model) {
- if (nameEl) nameEl.textContent = model.text;
- if (phaseEl) phaseEl.textContent = model.phase;
- if (txtEl) txtEl.textContent = Math.ceil(model.hp) + ' / ' + model.max + ' (' + model.pct + '%)';
- if (fillEl) fillEl.style.width = model.pct + '%';
- if (noteEl) noteEl.textContent = model.note;
+ hudSetText(nameEl, model.text);
+ hudSetText(phaseEl, model.phase);
+ hudSetText(txtEl, Math.ceil(model.hp) + ' / ' + model.max + ' (' + model.pct + '%)');
+ hudSetStyle(fillEl, 'width', model.pct + '%');
+ hudSetText(noteEl, model.note);
  paintPips(pipsEl, model.pips);
  }
  for (let i = 0; i < 4; i++) {
  const el = document.getElementById('vp-boss-' + i);
  if (!el) continue;
  const show = !!(model && numPlayers > 1 && i < numPlayers);
- el.style.display = show ? 'block' : 'none';
+ hudSetStyle(el, 'display', show ? 'block' : 'none');
  if (!show || !model) continue;
- const n = el.querySelector('.vp-boss-name');
- const p = el.querySelector('.vp-boss-phase');
- const f = el.querySelector('.vp-boss-fill');
- const note = el.querySelector('.vp-boss-note');
- const pipBox = el.querySelector('.vp-boss-pips');
- if (n) n.textContent = model.text;
- if (p) p.textContent = model.phase;
- if (f) f.style.width = model.pct + '%';
- if (note) note.textContent = model.note;
- paintPips(pipBox, model.pips);
+ hudSetText(el.querySelector('.vp-boss-name'), model.text);
+ hudSetText(el.querySelector('.vp-boss-phase'), model.phase);
+ hudSetStyle(el.querySelector('.vp-boss-fill'), 'width', model.pct + '%');
+ hudSetText(el.querySelector('.vp-boss-note'), model.note);
+ paintPips(el.querySelector('.vp-boss-pips'), model.pips);
  }
  }
  function clearBossCombat() {
@@ -15180,64 +16226,99 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return `${Math.floor(s / 60)}:${(s % 60) < 10 ? '0' : ''}${s % 60}`;
  }
 
+ function hudSetText(el, text) {
+ if (!el) return;
+ if (el.__bbText === text) { hudSkips++; return; }
+ el.__bbText = text;
+ el.textContent = text;
+ hudWrites++;
+ }
+ function hudSetClass(el, cls) {
+ if (!el) return;
+ if (el.__bbClass === cls) { hudSkips++; return; }
+ el.__bbClass = cls;
+ el.className = cls;
+ hudWrites++;
+ }
+ function hudSetStyle(el, prop, val) {
+ if (!el) return;
+ const key = '__bbS_' + prop;
+ if (el[key] === val) { hudSkips++; return; }
+ el[key] = val;
+ el.style[prop] = val;
+ hudWrites++;
+ }
  function updateHUD() {
  if (state.inWave) {
- document.getElementById('wave-title').textContent = `WAVE ${state.wave} — DEFEND THE RAMP`;
- document.getElementById('wave-sub').textContent = `Monsters Remaining: ${monsters.length + state.toSpawn.length}`;
+ hudSetText(document.getElementById('wave-title'), `WAVE ${state.wave} — DEFEND THE RAMP`);
+ hudSetText(document.getElementById('wave-sub'), `Monsters Remaining: ${monsters.length + state.toSpawn.length}`);
  } else {
- document.getElementById('wave-title').textContent = `INTERMISSION — NEXT: WAVE ${state.wave + 1}`;
- document.getElementById('wave-sub').textContent = `Next Horde: ${formatTime(state.intermissionTimer)} • Shoot the Bell to Start!`;
+ hudSetText(document.getElementById('wave-title'), `INTERMISSION — NEXT: WAVE ${state.wave + 1}`);
+ hudSetText(document.getElementById('wave-sub'), `Next Horde: ${formatTime(state.intermissionTimer)} • Shoot the Bell to Start!`);
  }
  const gPct = Math.max(0, Math.round((state.castleHp / state.maxCastleHp) * 100));
- document.getElementById('gate-bar').style.width = `${gPct}%`;
- document.getElementById('gate-hp-text').textContent = `${gPct}%`;
+ hudSetStyle(document.getElementById('gate-bar'), 'width', `${gPct}%`);
+ hudSetText(document.getElementById('gate-hp-text'), `${gPct}%`);
  syncCastleWear();
 
  paintBossHud();
 
  const pHud = document.getElementById('power-timer-hud');
- pHud.textContent = state.towerPowerCooldown <= 0 ? 'READY' : formatTime(state.towerPowerCooldown);
- pHud.className = 't-val ' + (state.towerPowerCooldown <= 0 ? 't-ready' : 't-wait');
+ hudSetText(pHud, state.towerPowerCooldown <= 0 ? 'READY' : formatTime(state.towerPowerCooldown));
+ hudSetClass(pHud, 't-val ' + (state.towerPowerCooldown <= 0 ? 't-ready' : 't-wait'));
 
- document.getElementById('hp-text').textContent = `HP ${Math.ceil(state.hp)} / ${state.maxHp}`;
- document.getElementById('lvl-text').textContent = `LVL ${state.level}`;
- document.getElementById('hp-bar').style.width = `${Math.max(0, (state.hp / state.maxHp) * 100)}%`;
- document.getElementById('xp-bar').style.width = `${Math.min(100, (state.xp / state.xpToNext) * 100)}%`;
- document.getElementById('xp-meta').textContent = `XP ${state.xp} / ${state.xpToNext}`;
- document.getElementById('spd-meta').textContent = `SPD ${Math.round((getPlayerSpeed() / 8.2) * 100)}%`;
- document.getElementById('kills-meta').textContent = `KILLS ${state.kills}`;
+ hudSetText(document.getElementById('hp-text'), `HP ${Math.ceil(state.hp)} / ${state.maxHp}`);
+ hudSetText(document.getElementById('lvl-text'), `LVL ${state.level}`);
+ hudSetStyle(document.getElementById('hp-bar'), 'width', `${Math.max(0, (state.hp / state.maxHp) * 100)}%`);
+ hudSetStyle(document.getElementById('xp-bar'), 'width', `${Math.min(100, (state.xp / state.xpToNext) * 100)}%`);
+ hudSetText(document.getElementById('xp-meta'), `XP ${state.xp} / ${state.xpToNext}`);
+ hudSetText(document.getElementById('spd-meta'), `SPD ${Math.round((getPlayerSpeed() / 8.2) * 100)}%`);
+ hudSetText(document.getElementById('kills-meta'), `KILLS ${state.kills}`);
  const dashEl = document.getElementById('dash-meta');
  if (dashEl) {
  if (state.dashTimer > 0) {
- dashEl.textContent = `DASH ${Math.ceil(state.dashTimer)}s`;
- dashEl.style.color = '#38bdf8';
+ hudSetText(dashEl, `DASH ${Math.ceil(state.dashTimer)}s`);
+ hudSetStyle(dashEl, 'color', '#38bdf8');
  } else if (state.dashCooldown > 0) {
- dashEl.textContent = `CD ${Math.ceil(state.dashCooldown)}s`;
- dashEl.style.color = '#fbbf24';
+ hudSetText(dashEl, `CD ${Math.ceil(state.dashCooldown)}s`);
+ hudSetStyle(dashEl, 'color', '#fbbf24');
  } else {
- dashEl.textContent = 'DASH READY';
- dashEl.style.color = '#4ade80';
+ hudSetText(dashEl, 'DASH READY');
+ hudSetStyle(dashEl, 'color', '#4ade80');
  }
  }
- document.getElementById('coin-text').textContent = walletText(0);
+ hudSetText(document.getElementById('coin-text'), walletText(0));
 
  const w = curWep();
  const maxMags = getMaxMags(state.level);
- document.getElementById('weapon-name').textContent = w.def.name + kiteSuffix(0);
- document.getElementById('weapon-tier').textContent = `Mk ${toRoman(w.tier)}`;
+ hudSetText(document.getElementById('weapon-name'), w.def.name + kiteSuffix(0));
+ hudSetText(document.getElementById('weapon-tier'), `Mk ${toRoman(w.tier)}`);
 
  const tBanner = document.getElementById('turret-banner');
  if (state.mountedTurret) {
- tBanner.style.display = 'block';
- tBanner.textContent = `🔫 DUAL .50 CAL MOUNTED: ${state.mountedTurret.ammo} / 200 RDS — [0] DISMOUNT`;
+ hudSetStyle(tBanner, 'display', 'block');
+ hudSetText(tBanner, `🔫 DUAL .50 CAL MOUNTED: ${state.mountedTurret.ammo} / 200 RDS — [0] DISMOUNT`);
  } else if (state.dual50Inventory > 0) {
- tBanner.style.display = 'block';
- tBanner.textContent = `📦 DUAL .50 CAL READY (x${state.dual50Inventory}) — PRESS [0] TO DEPLOY`;
+ hudSetStyle(tBanner, 'display', 'block');
+ hudSetText(tBanner, `📦 DUAL .50 CAL READY (x${state.dual50Inventory}) — PRESS [0] TO DEPLOY`);
  } else {
- tBanner.style.display = 'none';
+ hudSetStyle(tBanner, 'display', 'none');
  }
 
  const modsEl = document.getElementById('weapon-mods');
+ let modKey = '';
+ if (w.attachments) {
+ if (w.attachments.silencer) modKey += 'sil ';
+ if (w.attachments.extBarrel) modKey += 'bar ';
+ if (w.attachments.compensator) modKey += 'cmp ';
+ if (w.attachments.laser) modKey += 'las ';
+ if (w.attachments.foregrip) modKey += 'grp ';
+ }
+ if (w.magMod === 'drum') modKey += 'drum ';
+ else if (w.magMod === 'extended') modKey += 'ext ';
+ if (state.specialAmmo.timer > 0 && state.specialAmmo.type) modKey += state.specialAmmo.type;
+ if (modsEl.dataset.modKey !== modKey) {
+ modsEl.dataset.modKey = modKey;
  modsEl.textContent = '';
  const addModTag = (cls, txt) => {
  const sp = document.createElement('span');
@@ -15261,7 +16342,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (state.specialAmmo.type === 'ap') addModTag('mod-ammo-ap', 'AP RDS');
  if (state.specialAmmo.type === 'tracer') addModTag('mod-ammo-tracer', 'TRACER');
  }
+ }
  const ammoEl = document.getElementById('ammo-display');
+ let ammoKey;
+ if (w.def.tool === 'flint') ammoKey = 'flint';
+ else if (w.def.noMag) ammoKey = 'inf';
+ else ammoKey = (settings.infiniteMode ? 'infmag' : String(w.mag)) + '|' + (settings.infiniteMode ? 'infr' : String(w.reserve));
+ if (ammoEl.dataset.ammoKey !== ammoKey) {
+ ammoEl.dataset.ammoKey = ammoKey;
  ammoEl.textContent = '';
  if (w.def.tool === 'flint') {
  ammoEl.textContent = '−4s';
@@ -15273,19 +16361,29 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  resSpan.textContent = settings.infiniteMode ? '/ ∞' : `/ ${w.reserve}`;
  ammoEl.appendChild(resSpan);
  }
+ }
 
  paintThrowableChip(document.getElementById('throwable-hud'), 0);
 
  const nextMagLvl = Math.floor((state.level - 1) / 5) * 5 + 6;
- document.getElementById('mag-cap-info').textContent = `${maxMags} Mags Max (Next +1 at Lvl ${nextMagLvl})`;
- const unlockedCount = state.weapons.filter(wp => wp.unlocked).length;
+ hudSetText(document.getElementById('mag-cap-info'), `${maxMags} Mags Max (Next +1 at Lvl ${nextMagLvl})`);
+ let unlockedCount = 0;
+ for (let ui = 0; ui < state.weapons.length; ui++) if (state.weapons[ui].unlocked) unlockedCount++;
  let promptHint = '[1] Reload • [2] ADS • [0] .50 • [ previous • G/] next throwable • [V] Drop Mine • [M] Equip Mine';
  if (activeInputMode === 'xbox') promptHint = '🎮 [RT] Shoot • [LT] ADS • [Y] Weapon • [D-pad ←/→] Throwable • [LB] Next • [RB] Throw • [R3] Drop Mine';
  else if (activeInputMode === '8bitdo_ultimate') promptHint = '🎮 Ultimate: [X] Weapon (not D-pad Right) • [D-pad ←/→] Throwable • [L] Next • [R] Throw • [R3] Drop Mine';
  else if (activeInputMode === '8bitdo_micro') promptHint = '🎮 Micro: [D-pad L/R] Turn • [L2+Select] Next Throwable • [L2+Start] Prev • [Y] Weapon • [L2+Y] Equip Mine';
- document.getElementById('weapon-cycle-info').textContent = `Arsenal ${unlockedCount}/${state.weapons.length} • ${promptHint}`;
+ hudSetText(document.getElementById('weapon-cycle-info'), `Arsenal ${unlockedCount}/${state.weapons.length} • ${promptHint}`);
 
  const bEl = document.getElementById('active-buffs');
+ let buffKey = settings.infiniteMode ? 'inf|' : '|';
+ if (state.buffs.doubleDmg > 0) buffKey += 'd' + Math.ceil(state.buffs.doubleDmg) + ';';
+ if (state.buffs.rapidFire > 0) buffKey += 'r' + Math.ceil(state.buffs.rapidFire) + ';';
+ if (state.buffs.speedBoost > 0) buffKey += 's' + Math.ceil(state.buffs.speedBoost) + ';';
+ if (state.buffs.infAmmo > 0) buffKey += 'a' + Math.ceil(state.buffs.infAmmo) + ';';
+ if (state.specialAmmo.timer > 0) buffKey += 'sa' + state.specialAmmo.type + Math.ceil(state.specialAmmo.timer);
+ if (bEl.dataset.buffKey !== buffKey) {
+ bEl.dataset.buffKey = buffKey;
  bEl.innerHTML = '';
  if (settings.infiniteMode) {
  const infPill = document.createElement('div');
@@ -15300,7 +16398,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  speedBoost: ['💨 Speed Surge', '#38bdf8'],
  infAmmo: ['♾️ Infinite Ammo', '#22c55e']
  };
- Object.keys(state.buffs).forEach(k => {
+ const buffOrder = ['doubleDmg', 'rapidFire', 'speedBoost', 'infAmmo'];
+ for (let bi = 0; bi < buffOrder.length; bi++) {
+ const k = buffOrder[bi];
  if (state.buffs[k] > 0) {
  const pill = document.createElement('div');
  pill.className = 'buff-pill';
@@ -15308,7 +16408,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  pill.textContent = `${labels[k][0]} ${Math.ceil(state.buffs[k])}s`;
  bEl.appendChild(pill);
  }
- });
+ }
  if (state.specialAmmo.timer > 0) {
  const pill = document.createElement('div');
  pill.className = 'buff-pill';
@@ -15322,6 +16422,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  pill.style.borderLeftColor = entry[1];
  pill.textContent = `${entry[0]} ${Math.ceil(state.specialAmmo.timer)}s`;
  bEl.appendChild(pill);
+ }
  }
  }
 
@@ -15641,19 +16742,298 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let forcedDt = 0;
  let animQueued = false;
  let livePaused = false;
+ // Read-only frame sampler. Disarmed checks stay off the hot path.
+ let perfArmed = false;
+ let perfT = 0;
+ let perfLast = null;
+ let perfPixel = null;
+ const perfBuckets = { systems: 0, decor: 0, player: 0, combat: 0, monsters: 0, world: 0, extras: 0, hud: 0, render: 0 };
+ function perfStamp(name) {
+ const n = performance.now();
+ perfBuckets[name] += n - perfT;
+ perfT = n;
+ }
+ function perfResetBuckets() {
+ perfBuckets.systems = 0;
+ perfBuckets.decor = 0;
+ perfBuckets.player = 0;
+ perfBuckets.combat = 0;
+ perfBuckets.monsters = 0;
+ perfBuckets.world = 0;
+ perfBuckets.extras = 0;
+ perfBuckets.hud = 0;
+ perfBuckets.render = 0;
+ }
+ function perfMedian(values) {
+ const a = values.slice().sort(function (x, y) { return x - y; });
+ const mid = a.length >> 1;
+ if (a.length & 1) return a[mid];
+ return (a[mid - 1] + a[mid]) * 0.5;
+ }
+ function perfSnapshot() {
+ let meshes = 0;
+ let outlineMeshes = 0;
+ let lights = 0;
+ let instanced = 0;
+ scene.traverse(function (obj) {
+ if (obj.isLight) lights++;
+ if (obj.isInstancedMesh) instanced++;
+ if (!obj.isMesh) return;
+ meshes++;
+ if (obj.userData && obj.userData.isOutline) outlineMeshes++;
+ });
+ const lim = hitFxLimits(hitFxLimitScratch);
+ return {
+ players: numPlayers,
+ theme: themeId(),
+ seed: (courtyard && courtyard.code) ? courtyard.code : '',
+ running: !!state.running,
+ inWave: !!state.inWave,
+ monsters: monsters.length,
+ projectiles: projectiles.length,
+ particles: particles.length,
+ drops: drops.length,
+ colliders: colliders.length,
+ meshes: meshes,
+ outlineMeshes: outlineMeshes,
+ lights: lights,
+ instanced: instanced,
+ headless: !!headlessDriver,
+ shadowMap: !!renderer.shadowMap.enabled,
+ mapSize: sunLight.shadow.mapSize.x,
+ skipRender: !!debugSkipRender,
+ holdRender: !!debugHoldRender,
+ snow: settings.snow | 0,
+ snowDraw: snowDrawLevel(),
+ frames: window.__bastionFrames || 0,
+ hitFxCap: lim.cap,
+ sample: perfLast
+ };
+ }
+ function runPerfSample(frames) {
+ const n = Math.max(1, Math.min(240, frames | 0));
+ const prevFast = debugFastStep;
+ const prevPaused = livePaused;
+ const prevAuto = renderer.info.autoReset;
+ const prevSkip = debugSkipRender;
+ debugFastStep = false;
+ livePaused = true;
+ perfResetBuckets();
+ const times = [];
+ let drawCalls = 0;
+ let triangles = 0;
+ try {
+ perfArmed = true;
+ for (let i = 0; i < n; i++) {
+ const t0 = performance.now();
+ renderer.info.autoReset = false;
+ renderer.info.reset();
+ forcedDt = 0.05;
+ lastAnimAt = 0;
+ animate();
+ if (headlessDriver || debugSkipRender || debugHoldRender) {
+ const rt0 = performance.now();
+ renderSplitScreens();
+ perfBuckets.render += performance.now() - rt0;
+ }
+ const gl = renderer.getContext();
+ if (gl && gl.readPixels) {
+ if (!perfPixel) perfPixel = new Uint8Array(4);
+ const ft0 = performance.now();
+ gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, perfPixel);
+ perfBuckets.render += performance.now() - ft0;
+ }
+ const info = renderer.info.render;
+ drawCalls += info.calls;
+ triangles += info.triangles;
+ renderer.info.reset();
+ forcedDt = 0;
+ times.push(performance.now() - t0);
+ }
+ } finally {
+ perfArmed = false;
+ debugFastStep = prevFast;
+ forcedDt = 0;
+ debugSkipRender = prevSkip;
+ renderer.info.autoReset = prevAuto;
+ renderer.info.reset();
+ livePaused = prevPaused;
+ if (!prevPaused) queueLiveFrame();
+ }
+ let sum = 0;
+ let minMs = times[0];
+ let maxMs = times[0];
+ let maxFrame = 0;
+ for (let i = 0; i < times.length; i++) {
+ const t = times[i];
+ sum += t;
+ if (t < minMs) minMs = t;
+ if (t > maxMs) { maxMs = t; maxFrame = i; }
+ }
+ const buckets = {};
+ let bucketSum = 0;
+ const names = ['systems', 'decor', 'player', 'combat', 'monsters', 'world', 'extras', 'hud', 'render'];
+ for (let i = 0; i < names.length; i++) {
+ const key = names[i];
+ const ms = perfBuckets[key] / n;
+ buckets[key] = ms;
+ bucketSum += ms;
+ }
+ perfLast = {
+ frames: n,
+ dt: 0.05,
+ avgMs: sum / n,
+ medianMs: perfMedian(times),
+ minMs: minMs,
+ maxMs: maxMs,
+ maxFrame: maxFrame,
+ headMs: times.slice(0, 5),
+ tailMs: times.slice(-5),
+ bucketsMs: buckets,
+ bucketSumMs: bucketSum,
+ drawCalls: drawCalls / n,
+ triangles: triangles / n,
+ rendered: true
+ };
+ return perfSnapshot();
+ }
  function queueLiveFrame() {
  // Real play paces on animation frames. Headless Chrome can stop producing
  // those frames after many browsers, which also stalls a rAF test poll even
  // when the debug hook is already true. Tests step time themselves.
  if (forcedDt || animQueued || livePaused) return;
  animQueued = true;
- const pump = () => {
+ if (headlessDriver) setTimeout(pumpLiveFrame, 16);
+ else setTimeout(pumpLiveRaf, 0);
+ }
+ function pumpLiveFrame() {
  animQueued = false;
  animate();
  queueLiveFrame();
- };
- if (headlessDriver) setTimeout(pump, 16);
- else setTimeout(() => { requestAnimationFrame(pump); }, 0);
+ }
+ function pumpLiveRaf() {
+ requestAnimationFrame(pumpLiveFrame);
+ }
+ function updateProjectiles(dt) {
+ for (let i = projectiles.length - 1; i >= 0; i--) {
+ const p = projectiles[i];
+ if (p.type === 'round' || p.type === 'bolt') {
+ const done = advanceTravelShot(p, dt);
+ if (p.effect === 'harpoon') syncHarpoonChain(p);
+ if (done) {
+ releaseShotVisual(p);
+ projectiles.splice(i, 1);
+ }
+ continue;
+ }
+ p.fuse -= dt;
+ p.vel.y -= (p.type === 'grenade' ? 22 : 9) * dt;
+ p.mesh.position.addScaledVector(p.vel, dt);
+
+ // Check direct hit against any monster. Debug targets are the aimed body, same as bolts.
+ let hitMonster = null;
+ ensureMonsterGrid(false);
+ const near = bucketMarkNear(p.mesh.position.x, p.mesh.position.z, Math.max(1.7, 1.25 * mzMaxScale), false);
+ try {
+ for (let mi = 0; mi < monsters.length; mi++) {
+ const m = monsters[mi];
+ if (!near.has(m)) continue;
+ const scale = (m.base && m.base.scale) || 1;
+ scratchCenter.copy(m.mesh.position);
+ if (!m.debugTarget) scratchCenter.y += 1.05 * scale;
+ const reach = m.debugTarget ? 1.7 : 1.25 * scale;
+ if (scratchCenter.distanceTo(p.mesh.position) < reach) {
+ hitMonster = m;
+ break;
+ }
+ }
+ } finally {
+ releaseSet(near);
+ }
+
+ if (p.type === 'grenade') {
+ p.mesh.rotation.x += dt * 7;
+ p.mesh.rotation.z += dt * 5;
+ const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z) + 0.18;
+
+ if (hitMonster) {
+ if (p.gType === 'frag') {
+ triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
+ } else if (p.gType === 'flame') {
+ spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
+ } else if (p.gType === 'thermite') {
+ stickThermite(hitMonster, p.mesh.position.clone(), p.owner);
+ }
+ scene.remove(p.mesh);
+ projectiles.splice(i, 1);
+ continue;
+ }
+
+ if (p.mesh.position.y <= gy) {
+ p.mesh.position.y = gy;
+ if (p.gType === 'flame') {
+ spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
+ scene.remove(p.mesh);
+ projectiles.splice(i, 1);
+ continue;
+ } else if (p.gType === 'thermite') {
+ stickThermite(null, p.mesh.position.clone(), p.owner);
+ scene.remove(p.mesh);
+ projectiles.splice(i, 1);
+ continue;
+ } else {
+ p.vel.y = Math.abs(p.vel.y) * 0.42;
+ p.vel.x *= 0.72;
+ p.vel.z *= 0.72;
+ }
+ }
+ if (p.fuse <= 0) {
+ if (p.gType === 'frag') triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
+ else if (p.gType === 'flame') spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
+ else stickThermite(null, p.mesh.position.clone(), p.owner);
+ scene.remove(p.mesh);
+ projectiles.splice(i, 1);
+ }
+ } else if (p.type === 'rocket') {
+ // Straight-flying fast rocket with smoke & ember trail — explodes and leaves a burning fire zone!
+ p.vel.y += 9 * dt; // cancel gravity for straight flight
+ if (Math.random() < 0.75) spawnVoxelBurst(p.mesh.position, Math.random() < 0.4 ? 0xf97316 : 0xcbd5e1, 1, 1.4);
+ const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
+ if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
+ const impactPos = p.mesh.position.clone();
+ triggerExplosion(impactPos, p.radius, p.dmg, p.owner);
+ spawnFireZone(impactPos, 5.2, 6.0);
+ scene.remove(p.mesh);
+ disposeObject3D(p.mesh);
+ projectiles.splice(i, 1);
+ }
+ } else if (p.type === 'net' || p.type === 'bucket') {
+ if (settleLob(p)) {
+ releaseShotVisual(p);
+ projectiles.splice(i, 1);
+ }
+ } else if (p.type === 'gl_grenade' || p.type === 'mortar') {
+ // Leave the muzzle on the aim ray. The shared step above already applied gravity.
+ p.vel.y += 9 * dt;
+ p.mesh.rotation.x += dt * 6;
+ if (p.type === 'mortar' && Math.random() < 0.65) spawnVoxelBurst(p.mesh.position, 0xf97316, 1, 1.8);
+ const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
+ if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
+ triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
+ if (p.type === 'mortar') spawnFireZone(p.mesh.position.clone(), 4.5, 4.0);
+ scene.remove(p.mesh);
+ projectiles.splice(i, 1);
+ }
+ } else {
+ // Explosive Arrow
+ const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
+ if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
+ triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
+ scene.remove(p.mesh);
+ projectiles.splice(i, 1);
+ }
+ }
+ }
  }
  function animate() {
  // Headless Chrome stops vsync, so a timer steps the same loop when frames stall.
@@ -15662,6 +17042,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (!forcedDt && now - lastAnimAt < 12) return;
  lastAnimAt = now;
  window.__bastionFrames = (window.__bastionFrames || 0) + 1;
+ if (perfArmed) perfT = performance.now();
  framePads = null;
  pollGamepadsOnce();
  const dt = forcedDt || Math.min(0.05, clock.getDelta());
@@ -15686,7 +17067,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  updateProjectiles(dt);
  updateMines(dt);
  pollMineHotkeys();
- for (const t of deployedTurrets) {
+ for (let ti = 0; ti < deployedTurrets.length; ti++) {
+ const t = deployedTurrets[ti];
  if (t.fireCd > 0) t.fireCd -= dt;
  if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 0.55);
  }
@@ -15696,6 +17078,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return;
  }
 
+ if (perfArmed) perfStamp('systems');
  // Enhanced Snow Weather (Light / Heavy / Blizzard with wind gusts)
  const snowLevel = snowDrawLevel();
  if (snowLevel > 0) {
@@ -15788,6 +17171,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
+ if (perfArmed) perfStamp('decor');
  updateMenuGamepadNav(dt);
  updateP1Gamepad(dt);
  if (!state.running) {
@@ -15817,9 +17201,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (state.dashCooldown === 0) showBanner('💨 DASH READY [SHIFT]!', '#4ade80');
  }
 
- Object.keys(state.buffs).forEach(k => {
+ for (const k in state.buffs) {
  if (state.buffs[k] > 0) state.buffs[k] = Math.max(0, state.buffs[k] - dt);
- });
+ }
  if (state.specialAmmo.timer > 0) {
  state.specialAmmo.timer = Math.max(0, state.specialAmmo.timer - dt);
  if (state.specialAmmo.timer <= 0) state.specialAmmo.type = null;
@@ -15876,7 +17260,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
  // Update deployed Dual .50 Cal turrets
- for (const t of deployedTurrets) {
+ for (let ti = 0; ti < deployedTurrets.length; ti++) {
+ const t = deployedTurrets[ti];
  if (t.fireCd > 0) t.fireCd -= dt;
  if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 0.55);
  }
@@ -15885,14 +17270,14 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  t.pivot.rotation.order = 'YXZ';
  t.pivot.rotation.y = player.yaw;
  t.pivot.rotation.x = player.pitch - (t.recoil || 0) * 1.7;
- const back = new THREE.Vector3(Math.sin(player.yaw), 0, Math.cos(player.yaw));
+ const back = scratchBack.set(Math.sin(player.yaw), 0, Math.cos(player.yaw));
  player.pos.set(t.pos.x + back.x * 0.65, t.pos.y + player.eyeHeight, t.pos.z + back.z * 0.65);
  }
 
  // Player movement
- const forward = new THREE.Vector3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
- const right = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
- const moveDir = new THREE.Vector3();
+ const forward = scratchFwd.set(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+ const right = scratchRight.set(Math.cos(player.yaw), 0, -Math.sin(player.yaw));
+ const moveDir = scratchMove.set(0, 0, 0);
  if (keys[settings.keybinds.forward]) moveDir.add(forward);
  if (keys[settings.keybinds.backward]) moveDir.sub(forward);
  if (keys[settings.keybinds.right]) moveDir.add(right);
@@ -15907,12 +17292,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const nextX = player.pos.x + hv.x * dt;
  const nextZ = player.pos.z + hv.z * dt;
 
- const blocked = (x, z) => {
- if (outsideActor(x, z, false)) return true;
- return hitCollider(x, z);
- };
- if (!blocked(nextX, player.pos.z) && !isWaterOrBridgeDropZone(nextX, player.pos.z) && !fieldWaterAt(nextX, player.pos.z)) player.pos.x = nextX;
- if (!blocked(player.pos.x, nextZ) && !isWaterOrBridgeDropZone(player.pos.x, nextZ) && !fieldWaterAt(player.pos.x, nextZ)) player.pos.z = nextZ;
+ if (!playerBlocked(nextX, player.pos.z) && !isWaterOrBridgeDropZone(nextX, player.pos.z) && !fieldWaterAt(nextX, player.pos.z)) player.pos.x = nextX;
+ if (!playerBlocked(player.pos.x, nextZ) && !isWaterOrBridgeDropZone(player.pos.x, nextZ) && !fieldWaterAt(player.pos.x, nextZ)) player.pos.z = nextZ;
 
  if (keys[settings.keybinds.jump] && player.onGround && !isViewportShopOpen(0)) {
  player.vel.y = 7.4;
@@ -16008,121 +17389,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
+ if (perfArmed) perfStamp('player');
  updateProjectiles(dt);
- function updateProjectiles(dt) {
- for (let i = projectiles.length - 1; i >= 0; i--) {
- const p = projectiles[i];
- if (p.type === 'round' || p.type === 'bolt') {
- const done = advanceTravelShot(p, dt);
- if (p.effect === 'harpoon') syncHarpoonChain(p);
- if (done) {
- releaseShotVisual(p);
- projectiles.splice(i, 1);
- }
- continue;
- }
- p.fuse -= dt;
- p.vel.y -= (p.type === 'grenade' ? 22 : 9) * dt;
- p.mesh.position.addScaledVector(p.vel, dt);
-
- // Check direct hit against any monster. Debug targets are the aimed body, same as bolts.
- let hitMonster = null;
- for (const m of monsters) {
- const scale = (m.base && m.base.scale) || 1;
- const mCenter = m.debugTarget
- ? m.mesh.position.clone()
- : m.mesh.position.clone().add(new THREE.Vector3(0, 1.05 * scale, 0));
- const reach = m.debugTarget ? 1.7 : 1.25 * scale;
- if (mCenter.distanceTo(p.mesh.position) < reach) {
- hitMonster = m;
- break;
- }
- }
-
- if (p.type === 'grenade') {
- p.mesh.rotation.x += dt * 7;
- p.mesh.rotation.z += dt * 5;
- const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z) + 0.18;
-
- if (hitMonster) {
- if (p.gType === 'frag') {
- triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
- } else if (p.gType === 'flame') {
- spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
- } else if (p.gType === 'thermite') {
- stickThermite(hitMonster, p.mesh.position.clone(), p.owner);
- }
- scene.remove(p.mesh);
- projectiles.splice(i, 1);
- continue;
- }
-
- if (p.mesh.position.y <= gy) {
- p.mesh.position.y = gy;
- if (p.gType === 'flame') {
- spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
- scene.remove(p.mesh);
- projectiles.splice(i, 1);
- continue;
- } else if (p.gType === 'thermite') {
- stickThermite(null, p.mesh.position.clone(), p.owner);
- scene.remove(p.mesh);
- projectiles.splice(i, 1);
- continue;
- } else {
- p.vel.y = Math.abs(p.vel.y) * 0.42;
- p.vel.x *= 0.72;
- p.vel.z *= 0.72;
- }
- }
- if (p.fuse <= 0) {
- if (p.gType === 'frag') triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
- else if (p.gType === 'flame') spawnFireZone(p.mesh.position.clone(), 5.0, 6.5);
- else stickThermite(null, p.mesh.position.clone(), p.owner);
- scene.remove(p.mesh);
- projectiles.splice(i, 1);
- }
- } else if (p.type === 'rocket') {
- // Straight-flying fast rocket with smoke & ember trail — explodes and leaves a burning fire zone!
- p.vel.y += 9 * dt; // cancel gravity for straight flight
- if (Math.random() < 0.75) spawnVoxelBurst(p.mesh.position.clone(), Math.random() < 0.4 ? 0xf97316 : 0xcbd5e1, 1, 1.4);
- const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
- if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
- const impactPos = p.mesh.position.clone();
- triggerExplosion(impactPos, p.radius, p.dmg, p.owner);
- spawnFireZone(impactPos, 5.2, 6.0);
- scene.remove(p.mesh);
- disposeObject3D(p.mesh);
- projectiles.splice(i, 1);
- }
- } else if (p.type === 'net' || p.type === 'bucket') {
- if (settleLob(p)) {
- releaseShotVisual(p);
- projectiles.splice(i, 1);
- }
- } else if (p.type === 'gl_grenade' || p.type === 'mortar') {
- // Leave the muzzle on the aim ray. The shared step above already applied gravity.
- p.vel.y += 9 * dt;
- p.mesh.rotation.x += dt * 6;
- if (p.type === 'mortar' && Math.random() < 0.65) spawnVoxelBurst(p.mesh.position.clone(), 0xf97316, 1, 1.8);
- const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
- if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
- triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
- if (p.type === 'mortar') spawnFireZone(p.mesh.position.clone(), 4.5, 4.0);
- scene.remove(p.mesh);
- projectiles.splice(i, 1);
- }
- } else {
- // Explosive Arrow
- const gy = getGroundHeight(p.mesh.position.x, p.mesh.position.z);
- if (hitMonster || p.mesh.position.y <= gy || p.fuse <= 0) {
- triggerExplosion(p.mesh.position.clone(), p.radius, p.dmg, p.owner);
- scene.remove(p.mesh);
- projectiles.splice(i, 1);
- }
- }
- }
- }
 
  // UPDATE STUCK THERMITE GRENADES
  for (let i = stuckThermites.length - 1; i >= 0; i--) {
@@ -16146,12 +17414,20 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (th.targetMonster && th.targetMonster.hp > 0) {
  damageMonster(th.targetMonster, 48, th.pos, false, th.owner);
  }
+ const near = bucketMarkNear(th.pos.x, th.pos.z, 3.6, false);
+ try {
  for (let j = monsters.length - 1; j >= 0; j--) {
  const m = monsters[j];
+ if (!near.has(m)) continue;
  if (m !== th.targetMonster && m.mesh.position.distanceTo(th.pos) < 3.6) {
  m.burnTimer = Math.max(m.burnTimer, 3.0);
- damageMonster(m, 22, m.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false);
+ scratchHurt.copy(m.mesh.position);
+ scratchHurt.y += 1;
+ damageMonster(m, 22, scratchHurt, false);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  }
  if (th.life <= 0) {
@@ -16165,19 +17441,29 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const fz = fireZones[i];
  fz.life -= dt;
  fz.tick += dt;
- fz.group.children.forEach((b, idx) => {
- b.scale.y = 0.7 + Math.sin(clock.elapsedTime * 14 + idx) * 0.45;
- });
+ const flames = fz.group.children;
+ for (let fi = 0; fi < flames.length; fi++) {
+ flames[fi].scale.y = 0.7 + Math.sin(clock.elapsedTime * 14 + fi) * 0.45;
+ }
  if (fz.tick >= 0.36) {
  fz.tick = 0;
- cappedVoxelBurst(new THREE.Vector3(fz.pos.x + (Math.random()-0.5)*3, fz.pos.y + 0.3, fz.pos.z + (Math.random()-0.5)*3), 0xf97316, 1, 2.5);
+ scratchHurt.set(fz.pos.x + (Math.random() - 0.5) * 3, fz.pos.y + 0.3, fz.pos.z + (Math.random() - 0.5) * 3);
+ cappedVoxelBurst(scratchHurt, 0xf97316, 1, 2.5);
+ const near = bucketMarkNear(fz.pos.x, fz.pos.z, fz.radius, false);
+ try {
  for (let j = monsters.length - 1; j >= 0; j--) {
  const m = monsters[j];
+ if (!near.has(m)) continue;
  if (!m.mesh) continue;
  if (Math.hypot(m.mesh.position.x - fz.pos.x, m.mesh.position.z - fz.pos.z) <= fz.radius) {
  m.burnTimer = Math.max(m.burnTimer, 4.0);
- damageMonster(m, 26, m.mesh.position.clone().add(new THREE.Vector3(0, 1, 0)), false);
+ scratchHurt.copy(m.mesh.position);
+ scratchHurt.y += 1;
+ damageMonster(m, 26, scratchHurt, false);
  }
+ }
+ } finally {
+ releaseSet(near);
  }
  }
  if (fz.life <= 0) {
@@ -16189,6 +17475,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  updateBossWorld(dt);
 
+ if (perfArmed) perfStamp('combat');
+ mzGen++;
  // UPDATE MONSTERS
  for (let i = monsters.length - 1; i >= 0; i--) {
  const m = monsters[i];
@@ -16215,8 +17503,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  m.burnTick += dt;
  if (m.burnTick >= 0.35) {
  m.burnTick = 0;
- spawnVoxelBurst(pos.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xf97316, 3, 2.5);
- damageMonster(m, 16, pos.clone().add(new THREE.Vector3(0, 1.2, 0)), false);
+ scratchHurt.copy(pos);
+ scratchHurt.y += 1.2;
+ spawnVoxelBurst(scratchHurt, 0xf97316, 3, 2.5);
+ damageMonster(m, 16, scratchHurt, false);
  if (m.hp <= 0) continue;
  }
  }
@@ -16266,13 +17556,18 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  } else if (!bossSteered) {
  // Monster Root Motion: stride cycle drives forward impulse, hip bob, torso lean & arm counter-swing
  m.walkPhase += dt * m.speed * 2.35;
- const strideImpulse = 0.68 + 0.64 * Math.abs(Math.sin(m.walkPhase));
  const dx = targetX - pos.x, dz = targetZ - pos.z;
  const dist = Math.hypot(dx, dz) || 1;
- let moveX = (dx / dist) * m.speed * strideImpulse * moveScale;
- let moveZ = (dz / dist) * m.speed * strideImpulse * moveScale;
+ const rooted = moveScale === 0;
+ let moveX = 0;
+ let moveZ = 0;
+ if (m.base.zigzag) m.zigPhase += dt * 7.5;
+ if (!rooted) {
+ aiSteerSteps++;
+ const strideImpulse = 0.68 + 0.64 * Math.abs(Math.sin(m.walkPhase));
+ moveX = (dx / dist) * m.speed * strideImpulse * moveScale;
+ moveZ = (dz / dist) * m.speed * strideImpulse * moveScale;
  if (m.base.zigzag) {
- m.zigPhase += dt * 7.5;
  const amp = pos.z < -23.5 ? 7.8 : 3.2;
  moveX += Math.cos(m.zigPhase) * amp * moveScale;
  }
@@ -16292,10 +17587,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  moveZ *= 1.45;
  }
  }
+ } else {
+ aiSteerSkips++;
+ }
  const tryX = pos.x + moveX * dt;
  const tryZ = pos.z + moveZ * dt;
+ if (!(rooted && !fieldWaterAt(pos.x, pos.z))) {
  const moved = avoidFieldWater(pos, tryX, tryZ, m.speed, dt);
  pos.x = moved.x;
+ }
  if (pos.z >= -24.0) pos.x = Math.max(-3.4, Math.min(3.4, pos.x));
  if (!fieldWaterAt(pos.x, tryZ) && tryZ > currentField().zSouth - 1 && tryZ < 20.5) pos.z = tryZ;
  if (!m.base.flying && !m.bossKind && !(m.base && m.base.isBoss) && pos.z < -24.2) {
@@ -16398,10 +17698,19 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
 
  // Passing melee swipe: monsters strike you as they pass if you get close!
- const distPlayer = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
- const swipeReach = 2.45 + Math.max(0, m.base.scale - 1.0) * 0.75;
+ // A cooldown that is still running cannot land, so the distance scan waits.
  if (m.attackCd > 0) m.attackCd -= dt;
- if (!frozenSolid && distPlayer < swipeReach && Math.abs(pos.y - (player.pos.y - player.eyeHeight)) < 2.6 && m.attackCd <= 0) {
+ let distPlayer = 0;
+ let swipeReach = 0;
+ const attackReady = !frozenSolid && m.attackCd <= 0;
+ if (!attackReady) {
+ if (!frozenSolid) aiAttackSkips++;
+ } else {
+ aiAttackChecks++;
+ distPlayer = Math.hypot(pos.x - player.pos.x, pos.z - player.pos.z);
+ swipeReach = 2.45 + Math.max(0, m.base.scale - 1.0) * 0.75;
+ }
+ if (attackReady && distPlayer < swipeReach && Math.abs(pos.y - (player.pos.y - player.eyeHeight)) < 2.6 && m.attackCd <= 0) {
  m.attackCd = 0.72;
  if (!settings.infiniteMode) state.hp -= Math.round(m.base.dmg * settings.difficulty);
  // Quick arm swipe visual & slight lateral shove on player
@@ -16414,8 +17723,8 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const pushZ = (player.pos.z - pos.z) / (distPlayer || 1);
  const px = player.pos.x + pushX * 0.55;
  const pz = player.pos.z + pushZ * 0.55;
- if (!blocked(px, player.pos.z)) player.pos.x = px;
- if (!blocked(player.pos.x, pz)) player.pos.z = pz;
+ if (!playerBlocked(px, player.pos.z)) player.pos.x = px;
+ if (!playerBlocked(player.pos.x, pz)) player.pos.z = pz;
  }
  playTone(120, 60, 0.16, 0.25, 'sawtooth');
  document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 95px rgba(239, 68, 68, 0.65)';
@@ -16589,6 +17898,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
+ if (perfArmed) perfStamp('monsters');
  updateMines(dt);
  updateDrops(dt);
 
@@ -16600,7 +17910,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p.mesh.position.addScaledVector(p.vel, dt);
  p.mesh.rotation.x += dt * 5;
  p.mesh.rotation.y += dt * 4;
- if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
+ if (p.life <= 0) {
+ p.mesh.visible = false;
+ voxelFree.push(p);
+ particles.splice(i, 1);
+ } else {
+ p.mesh.updateMatrix();
+ }
  }
  updateHitFx(dt);
  for (let i = tracers.length - 1; i >= 0; i--) {
@@ -16614,11 +17930,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  }
 
+ if (perfArmed) perfStamp('world');
  updateExtraPlayers(dt);
  updateViewportShops(dt);
  updateCasings(dt);
+ if (perfArmed) perfStamp('extras');
  updateHUD();
+ if (perfArmed) perfStamp('hud');
  if (!headlessDriver && !debugSkipRender && !debugHoldRender) renderSplitScreens();
+ if (perfArmed) perfStamp('render');
  }
 
  function updateDrops(dt) {
@@ -17810,13 +19130,13 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const equippedIdx = epShop ? epShop.weaponIdx : state.currentWeaponIdx;
  mount.querySelectorAll('.shop-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
  const h2 = mount.querySelector('h2');
- if (h2) h2.textContent = `⚔️ CASTLE ARMORY SHOP — ${who}`;
+ hudSetText(h2, `⚔️ CASTLE ARMORY SHOP — ${who}`);
  const wallet = mount.querySelector('.shop-wallet');
- if (wallet) wallet.textContent = `🪙 ${walletText(idx)}`;
+ hudSetText(wallet, `🪙 ${walletText(idx)}`);
  const activeEl = mount.querySelector('.shop-active-wep');
- if (activeEl) activeEl.textContent = w.def.noUpgrades
+ hudSetText(activeEl, w.def.noUpgrades
  ? `${who} — Equipped: ${w.def.name} (No Upgrades Allowed)`
- : `${who} — Equipped: ${w.def.name} (Mk ${toRoman(w.tier)} / L${weaponPowerLevel(idx, equippedIdx)}) — Upgrades apply ONLY to this weapon`;
+ : `${who} — Equipped: ${w.def.name} (Mk ${toRoman(w.tier)} / L${weaponPowerLevel(idx, equippedIdx)}) — Upgrades apply ONLY to this weapon`);
 
  const body = mount.querySelector('.shop-body');
  const shopPreserve = captureShopFocus(body, mount);
@@ -18405,29 +19725,40 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  // 2P: Top (P1) / Bottom (P2)
  // 3P: Top-Left (P1), Top-Right (P2), Full-Width Bottom (P3 gets larger screen!)
  // 4P: 2x2 Grid (P1 TL, P2 TR, P3 BL, P4 BR)
+ function writeSplitVp(i, x, y, w, h) {
+ const vp = splitVpScratch[i];
+ vp.x = x;
+ vp.y = y;
+ vp.w = w;
+ vp.h = h;
+ return vp;
+ }
  function getSplitViewports(W, H) {
- if (numPlayers === 1) return [{ x: 0, y: 0, w: W, h: H }];
+ const view = splitVpView;
+ view.length = 0;
+ if (numPlayers === 1) {
+ view.push(writeSplitVp(0, 0, 0, W, H));
+ return view;
+ }
  if (numPlayers === 2) {
- return [
- { x: 0, y: Math.floor(H / 2), w: W, h: H - Math.floor(H / 2) }, // P1 Top
- { x: 0, y: 0, w: W, h: Math.floor(H / 2) } // P2 Bottom
- ];
+ const half = Math.floor(H / 2);
+ view.push(writeSplitVp(0, 0, half, W, H - half)); // P1 Top
+ view.push(writeSplitVp(1, 0, 0, W, half)); // P2 Bottom
+ return view;
  }
  if (numPlayers === 3) {
  const hw = Math.floor(W / 2), hh = Math.floor(H / 2);
- return [
- { x: 0, y: hh, w: hw, h: H - hh }, // P1 Top-Left
- { x: hw, y: hh, w: W - hw, h: H - hh }, // P2 Top-Right
- { x: 0, y: 0, w: W, h: hh } // P3 Bottom (Larger full-width screen!)
- ];
+ view.push(writeSplitVp(0, 0, hh, hw, H - hh)); // P1 Top-Left
+ view.push(writeSplitVp(1, hw, hh, W - hw, H - hh)); // P2 Top-Right
+ view.push(writeSplitVp(2, 0, 0, W, hh)); // P3 Bottom (Larger full-width screen!)
+ return view;
  }
  const hw = Math.floor(W / 2), hh = Math.floor(H / 2);
- return [
- { x: 0, y: hh, w: hw, h: H - hh }, // P1 Top-Left
- { x: hw, y: hh, w: W - hw, h: H - hh }, // P2 Top-Right
- { x: 0, y: 0, w: hw, h: hh }, // P3 Bottom-Left
- { x: hw, y: 0, w: W - hw, h: hh } // P4 Bottom-Right
- ];
+ view.push(writeSplitVp(0, 0, hh, hw, H - hh)); // P1 Top-Left
+ view.push(writeSplitVp(1, hw, hh, W - hw, H - hh)); // P2 Top-Right
+ view.push(writeSplitVp(2, 0, 0, hw, hh)); // P3 Bottom-Left
+ view.push(writeSplitVp(3, hw, 0, W - hw, hh)); // P4 Bottom-Right
+ return view;
  }
 
  function buildSplitHUD() {
@@ -18561,39 +19892,38 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  function updateSplitHUD() {
  if (numPlayers <= 1) return;
- // P1
  const p1HpTxt = document.getElementById('vp-hp-txt-0');
  const p1HpBar = document.getElementById('vp-hp-bar-0');
  const p1Wep = document.getElementById('vp-wep-txt-0') || document.getElementById('vp-wep-0');
- if (p1HpTxt) p1HpTxt.textContent = `HP ${Math.ceil(state.hp)} / ${state.maxHp}`;
- if (p1HpBar) p1HpBar.style.width = `${Math.max(0, (state.hp / state.maxHp) * 100)}%`;
+ hudSetText(p1HpTxt, `HP ${Math.ceil(state.hp)} / ${state.maxHp}`);
+ hudSetStyle(p1HpBar, 'width', `${Math.max(0, (state.hp / state.maxHp) * 100)}%`);
  if (p1Wep) {
  const w = curWep();
- p1Wep.textContent = hudWeaponLine(w.def, w.mag, w.reserve, state.reloading, 0);
+ hudSetText(p1Wep, hudWeaponLine(w.def, w.mag, w.reserve, state.reloading, 0));
  }
  paintThrowableChip(document.getElementById('vp-nade-0'), 0);
- // P2-P4
- extraPlayers.forEach(ep => {
+ for (let epIndex = 0; epIndex < extraPlayers.length; epIndex++) {
+ const ep = extraPlayers[epIndex];
  const i = ep.index;
  const hpTxt = document.getElementById(`vp-hp-txt-${i}`);
  const hpBar = document.getElementById(`vp-hp-bar-${i}`);
  const wepEl = document.getElementById(`vp-wep-txt-${i}`) || document.getElementById(`vp-wep-${i}`);
- if (hpTxt) hpTxt.textContent = `HP ${Math.ceil(ep.hp)} / ${ep.maxHp}`;
- if (hpBar) hpBar.style.width = `${Math.max(0, (ep.hp / ep.maxHp) * 100)}%`;
+ hudSetText(hpTxt, `HP ${Math.ceil(ep.hp)} / ${ep.maxHp}`);
+ hudSetStyle(hpBar, 'width', `${Math.max(0, (ep.hp / ep.maxHp) * 100)}%`);
  if (wepEl) {
  const def = WEAPON_DEFS[ep.weaponIdx];
- wepEl.textContent = hudWeaponLine(def, ep.mag, ep.reserve, ep.reloading, ep.index);
+ hudSetText(wepEl, hudWeaponLine(def, ep.mag, ep.reserve, ep.reloading, ep.index));
  }
  paintThrowableChip(document.getElementById(`vp-nade-${i}`), i);
- });
+ }
  for (let i = 0; i < numPlayers; i++) {
  const el = document.getElementById('vp-turret-' + i);
- if (!el) continue;
+ if (el) {
  const text = dual50HudText(i);
- el.textContent = text;
- el.style.display = text ? 'block' : 'none';
- const wal = document.getElementById('vp-wallet-' + i);
- if (wal) wal.textContent = walletText(i);
+ hudSetText(el, text);
+ hudSetStyle(el, 'display', text ? 'block' : 'none');
+ }
+ hudSetText(document.getElementById('vp-wallet-' + i), walletText(i));
  }
  }
 
@@ -18653,14 +19983,16 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return;
  }
 
- const hitTargets = bulletRoots(true);
+ const shotRoots = collectShotRoots(true);
  const pellets = def.pellets || 1;
  const tCol = (ep.buffs && ep.buffs.doubleDmg > 0) ? 0xf87171 : 0xfef08a;
  const epMuzzle = muzzleWorld(ep.index, def.dual ? 1 : 1);
  for (let p = 0; p < pellets; p++) {
  const sx = (Math.random() - 0.5) * def.spread;
  const sy = (Math.random() - 0.5) * def.spread;
- raycaster.setFromCamera(new THREE.Vector2(sx, sy), ep.cam);
+ scratchNdc.set(sx, sy);
+ raycaster.setFromCamera(scratchNdc, ep.cam);
+ const hitTargets = shotPick(raycaster.ray, shotRoots, true);
  const hits = raycaster.intersectObjects(hitTargets, true);
  const startPt = epMuzzle.clone();
  let endPt = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(110));
@@ -18712,11 +20044,11 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (numPlayers <= 1) return;
  if (playerPaused || menuBlocksGameplay()) return;
 
- extraPlayers.forEach(ep => {
+ for (let epIndex = 0; epIndex < extraPlayers.length; epIndex++) {
+ const ep = extraPlayers[epIndex];
  if (ep.buffs) {
- const bk = Object.keys(ep.buffs);
- for (let bi = 0; bi < bk.length; bi++) {
- if (ep.buffs[bk[bi]] > 0) ep.buffs[bk[bi]] = Math.max(0, ep.buffs[bk[bi]] - dt);
+ for (const bk in ep.buffs) {
+ if (ep.buffs[bk] > 0) ep.buffs[bk] = Math.max(0, ep.buffs[bk] - dt);
  }
  }
  if (ep.specialAmmo && ep.specialAmmo.timer > 0) {
@@ -18737,7 +20069,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ep.prevGrenadeCycleBtn = true;
  ep.prevGrenadeCyclePrevBtn = true;
  showActorPrompt(ep.index, '');
- return;
+ continue;
  }
  if (ep.fireCd > 0) ep.fireCd -= dt;
  if (ep.reloading) {
@@ -18844,9 +20176,9 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  ep.yaw += turnYaw * dt;
  ep.pitch = Math.max(-1.35, Math.min(1.35, ep.pitch + turnPitch * dt));
 
- const fwd = new THREE.Vector3(-Math.sin(ep.yaw), 0, -Math.cos(ep.yaw));
- const rgt = new THREE.Vector3(Math.cos(ep.yaw), 0, -Math.sin(ep.yaw));
- const mDir = new THREE.Vector3().addScaledVector(fwd, moveFwd).addScaledVector(rgt, moveStrafe);
+ const fwd = scratchFwd.set(-Math.sin(ep.yaw), 0, -Math.cos(ep.yaw));
+ const rgt = scratchRight.set(Math.cos(ep.yaw), 0, -Math.sin(ep.yaw));
+ const mDir = scratchMove.set(0, 0, 0).addScaledVector(fwd, moveFwd).addScaledVector(rgt, moveStrafe);
  if (mDir.lengthSq() > 1) mDir.normalize();
 
  if (ep.mountedTurret) {
@@ -18854,7 +20186,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  t.pivot.rotation.order = 'YXZ';
  t.pivot.rotation.y = ep.yaw;
  t.pivot.rotation.x = ep.pitch - (t.recoil || 0) * 1.7;
- const back = new THREE.Vector3(Math.sin(ep.yaw), 0, Math.cos(ep.yaw));
+ const back = scratchBack.set(Math.sin(ep.yaw), 0, Math.cos(ep.yaw));
  ep.pos.set(t.pos.x + back.x * 0.65, t.pos.y + 1.72, t.pos.z + back.z * 0.65);
  ep.vel.set(0, 0, 0);
  ep.onGround = true;
@@ -18962,7 +20294,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  ep.avatar.position.set(ep.pos.x, ep.pos.y - 1.72, ep.pos.z);
  ep.avatar.rotation.y = ep.yaw;
- });
+ }
 
  // Keep P1 avatar & held weapon synced so P2-P4 can see P1!
  p1Avatar.position.set(player.pos.x, player.pos.y - 1.72, player.pos.z);
@@ -18976,6 +20308,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  function renderSplitScreens() {
  syncCastleWear();
  refreshScopeChrome();
+ scene.updateMatrixWorld();
  const W = window.innerWidth, H = window.innerHeight;
  if (numPlayers === 1) {
  p1Avatar.visible = false;
@@ -18989,8 +20322,16 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  const vps = getSplitViewports(W, H);
  renderer.setScissorTest(true);
- const allCams = [camera, ...extraPlayers.map(ep => ep.cam)];
- const allAvatars = [p1Avatar, ...extraPlayers.map(ep => ep.avatar)];
+ splitCamScratch.length = 0;
+ splitAvatarScratch.length = 0;
+ splitCamScratch.push(camera);
+ splitAvatarScratch.push(p1Avatar);
+ for (let ei = 0; ei < extraPlayers.length; ei++) {
+ splitCamScratch.push(extraPlayers[ei].cam);
+ splitAvatarScratch.push(extraPlayers[ei].avatar);
+ }
+ const allCams = splitCamScratch;
+ const allAvatars = splitAvatarScratch;
 
  for (let i = 0; i < numPlayers; i++) {
  const vp = vps[i];
@@ -18998,9 +20339,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  // Hide own avatar & show other players' avatars; show active player's first-person gun viewmodel
  for (let j = 0; j < numPlayers; j++) allAvatars[j].visible = (j !== i);
  if (currentWeaponMesh) currentWeaponMesh.visible = !debugHideFpGuns && (i === 0 && !state.scoped && !state.mountedTurret);
- extraPlayers.forEach((ep, eIdx) => {
+ for (let eIdx = 0; eIdx < extraPlayers.length; eIdx++) {
+ const ep = extraPlayers[eIdx];
  if (ep.fpGunGroup) ep.fpGunGroup.visible = !debugHideFpGuns && (i === eIdx + 1 && !ep.mountedTurret && !ep.scoped);
- });
+ }
 
  cam.aspect = vp.w / Math.max(1, vp.h);
  if (i === 0 && state.scoped) cam.fov = curWep().def.scopeFov || 22;
@@ -19124,6 +20466,62 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  coin: coin ? coin.textContent : '',
  wallets: wallets
  };
+ }
+ function batchInfo() {
+ let castleHidden = 0;
+ let castleShown = 0;
+ if (castleOutline) {
+ castleOutline.traverse(function (obj) {
+ if (!obj.isMesh || obj.name !== 'castle-toon-outline') return;
+ if (obj.visible === false) castleHidden++;
+ else castleShown++;
+ });
+ }
+ return {
+ kind: 'merged-faces',
+ voxels: worldVoxels.length,
+ cells: worldCellCount,
+ faces: worldFaceCount,
+ tris: worldTriCount,
+ fullBoxTris: worldVoxels.length * 12,
+ draws: worldDrawCount,
+ instanced: !!(worldMesh && worldMesh.isInstancedMesh),
+ castleSources: castleInkSources,
+ castleDraws: castleInkDraws,
+ castleHidden: castleHidden,
+ castleShown: castleShown,
+ sealedSources: sealedSources,
+ sealedDraws: sealedDraws
+ };
+ }
+ function hudInfo() {
+ const coin = document.getElementById('coin-text');
+ const hp = document.getElementById('hp-text');
+ const gate = document.getElementById('gate-hp-text');
+ const wave = document.getElementById('wave-title');
+ const wallets = [];
+ for (let i = 0; i < 4; i++) {
+ const el = document.getElementById('vp-wallet-' + i);
+ wallets.push(el ? el.textContent : '');
+ }
+ const panel = document.querySelector('.bb-hud-panel');
+ return {
+ writes: hudWrites,
+ skips: hudSkips,
+ coin: coin ? coin.textContent : '',
+ hp: hp ? hp.textContent : '',
+ gate: gate ? gate.textContent : '',
+ wave: wave ? wave.textContent : '',
+ wallets: wallets,
+ polish: document.body.classList.contains('bb-polish'),
+ goldClass: coin ? coin.className : '',
+ panel: panel ? panel.className : ''
+ };
+ }
+ function flushHud() {
+ updateHUD();
+ updateSplitHUD();
+ return hudInfo();
  }
 
  window.__bastionDebug = {
@@ -19744,7 +21142,10 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  return courtyardInfo();
  },
  ground(x, z) { return getGroundHeight(x, z); },
- hazardAt(x, z) { return hazardAt(x, z); },
+ hazardAt(x, z) {
+ const h = hazardAt(x, z);
+ return { ice: !!h.ice, snow: !!h.snow, iceMul: h.iceMul };
+ },
  nearAt(x, y, z) {
  const pos = { x: x, y: y, z: z };
  return { well: nearWell(pos), shop: isNearArmory(pos), shrine: nearShrine(pos) };
@@ -20015,9 +21416,15 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  stickThermiteAt(x, y, z) {
  let target = null;
  let best = 3;
+ const near = bucketMarkNear(x, z, 3, false);
+ try {
  for (let i = 0; i < monsters.length; i++) {
+ if (!near.has(monsters[i])) continue;
  const d = Math.hypot(monsters[i].mesh.position.x - x, monsters[i].mesh.position.z - z);
  if (d < best) { best = d; target = monsters[i]; }
+ }
+ } finally {
+ releaseSet(near);
  }
  stickThermite(target, new THREE.Vector3(x, y, z));
  return stuckThermites.length;
@@ -20291,8 +21698,16 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  slideProbe(x, z) {
  const actor = { pos: { x: x, z: z }, slide: null };
  const moving = horizontalVelocity(actor, 0, -1, 10, 0.05);
+ const movingZ = moving.z;
  const coast = horizontalVelocity(actor, 0, 0, 10, 0.05);
- return { hazard: hazardAt(x, z), movingZ: moving.z, coastZ: coast.z, hold: actor.slide.hold, iceZones: iceZones.length };
+ const hz = hazardAt(x, z);
+ return {
+ hazard: { ice: !!hz.ice, snow: !!hz.snow, iceMul: hz.iceMul },
+ movingZ: movingZ,
+ coastZ: coast.z,
+ hold: actor.slide.hold,
+ iceZones: iceZones.length
+ };
  },
  clearQueue() { state.toSpawn = []; state.spawnMeta = []; },
  sapperBlast(x, y, z) {
@@ -20510,11 +21925,115 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  body.scrollTop = n;
  return body.scrollTop;
  },
+ perfInfo(frames) {
+ if (frames) return runPerfSample(frames);
+ return perfSnapshot();
+ },
+ blockedAt(x, z) { return playerBlocked(x, z); },
+ colliderAudit() { return colliderAudit(); },
+ spatialInfo() {
+ return {
+ colliderCells: colKeys.length,
+ colliders: colliders.length,
+ monsterCells: mzKeys.length,
+ monsters: monsters.length,
+ maxShotR: mzMaxShotR,
+ maxScale: mzMaxScale,
+ rayQueries: rayQueries,
+ rayRoots: rayRoots,
+ rayCandidates: rayCandidates,
+ frozen: countFrozenSolids()
+ };
+ },
+ resetSpatialStats() {
+ rayQueries = 0;
+ rayRoots = 0;
+ rayCandidates = 0;
+ },
+ setKey(code, down) {
+ if (!code) return false;
+ keys[code] = !!down;
+ return true;
+ },
+ clearKeys() {
+ const names = Object.keys(keys);
+ for (let i = 0; i < names.length; i++) keys[names[i]] = false;
+ },
  renderBudget() {
  return {
  headless: headlessDriver,
  shadowMap: renderer.shadowMap.enabled,
  mapSize: sunLight.shadow.mapSize.x
+ };
+ },
+ aiInfo() { return aiInfo(); },
+ resetAiInfo() { resetAiInfo(); return aiInfo(); },
+ voxelInfo() { return voxelInfo(); },
+ rootMonster(index, seconds) {
+ const m = monsters[index | 0];
+ if (!m) return null;
+ m.rootTimer = seconds == null ? 99 : +seconds;
+ return m.rootTimer;
+ },
+ armCooldown(index, seconds) {
+ const m = monsters[index | 0];
+ if (!m) return null;
+ m.attackCd = seconds == null ? 5 : +seconds;
+ return m.attackCd;
+ },
+ burstVoxels(x, y, z, n) {
+ const count = n == null ? 10 : (n | 0);
+ spawnVoxelBurst(new THREE.Vector3(+x || 0, +y || 0, +z || 0), 0x94a3b8, count, 5.5);
+ return voxelInfo();
+ },
+ dryAt(x, z) { return !fieldWaterAt(+x || 0, +z || 0); },
+ renderInfo() {
+ return {
+ sceneAutoUpdate: !!scene.autoUpdate,
+ sceneMatrixAutoUpdate: !!scene.matrixAutoUpdate,
+ shadowMap: !!renderer.shadowMap.enabled,
+ mapSize: sunLight.shadow.mapSize.x,
+ mapSizeY: sunLight.shadow.mapSize.y,
+ soft: renderer.shadowMap.type === THREE.PCFSoftShadowMap,
+ pixelRatio: renderer.getPixelRatio(),
+ headless: !!headlessDriver
+ };
+ },
+ batchInfo() { return batchInfo(); },
+ hudInfo() { return hudInfo(); },
+ flushHud() { return flushHud(); },
+ outlineCost() {
+ let shells = 0;
+ let baked = 0;
+ let castle = 0;
+ let castleBaked = 0;
+ let hitSlots = 0;
+ let hitBaked = 0;
+ scene.traverse(function (obj) {
+ if (obj.isMesh && obj.userData && obj.userData.isOutline) {
+ shells++;
+ if (!obj.matrixAutoUpdate) baked++;
+ if (obj.name === 'castle-toon-outline') {
+ castle++;
+ if (!obj.matrixAutoUpdate) castleBaked++;
+ }
+ }
+ if (obj.isMesh && obj.userData && obj.userData.isHitFx) {
+ hitSlots++;
+ if (!obj.matrixAutoUpdate) hitBaked++;
+ }
+ });
+ return {
+ shells: shells,
+ baked: baked,
+ castle: castle,
+ castleBaked: castleBaked,
+ castleGroupBaked: !!(castleOutline && castleOutline.matrixAutoUpdate === false),
+ hitSlots: hitSlots,
+ hitBaked: hitBaked,
+ hitRootBaked: hitFxRoot.matrixAutoUpdate === false,
+ sceneAuto: scene.autoUpdate === false,
+ sceneMatrix: scene.matrixAutoUpdate === false
  };
  },
  shopLock() {
