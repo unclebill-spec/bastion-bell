@@ -526,9 +526,47 @@
  margin-top: 10px; font-size: 11.5px; letter-spacing: 1.5px; color: rgba(254, 215, 170, 0.55);
  text-transform: uppercase;
  }
+
+ /* Update 6 stage 5: menu, HUD, and gold paint. No layout, copy, or control changes. */
+ .bb-menu-panel {
+ background-color: rgba(16, 22, 36, 0.96);
+ background-image: linear-gradient(180deg, rgba(253, 224, 71, 0.16), rgba(253, 224, 71, 0) 52px);
+ border-color: rgba(251, 191, 36, 0.78);
+ box-shadow: inset 0 0 0 1px rgba(253, 224, 71, 0.34), 0 24px 60px rgba(0, 0, 0, 0.65);
+ }
+ .bb-menu-panel h1 { text-shadow: 0 2px 0 rgba(120, 53, 15, 0.4); }
+ .bb-menu-panel .info-box { box-shadow: inset 3px 0 0 rgba(251, 191, 36, 0.7); }
+ .vp-shop .shop-card.bb-menu-panel { box-shadow: inset 0 0 0 1px rgba(253, 224, 71, 0.34); }
+ .bb-hud-panel {
+ background-color: rgba(10, 16, 28, 0.88);
+ background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0));
+ border-color: rgba(251, 191, 36, 0.55);
+ box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 8px 18px rgba(0, 0, 0, 0.35);
+ }
+ #coin-text.bb-gold {
+ background-image: linear-gradient(180deg, #fef3c7 0%, #f59e0b 58%, #b45309 100%);
+ color: #1c1408;
+ border: 1px solid #78350f;
+ border-radius: 999px;
+ padding: 0 8px;
+ letter-spacing: 0.04em;
+ font-variant-numeric: tabular-nums;
+ text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+ box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 0 0 1px rgba(253, 224, 71, 0.4);
+ }
+ .shop-wallet.bb-gold,
+ .vp-wallet.bb-gold {
+ background-image: linear-gradient(180deg, rgba(254, 243, 199, 0.42), rgba(217, 119, 6, 0.22));
+ color: #fef3c7;
+ border-color: rgba(253, 224, 71, 0.85);
+ letter-spacing: 0.03em;
+ font-variant-numeric: tabular-nums;
+ text-shadow: 0 1px 0 rgba(120, 53, 15, 0.65);
+ box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(120, 53, 15, 0.45);
+ }
 </style>
 </head>
-<body>
+<body class="bb-polish">
 
 <!-- Startup Splash Screen -->
 <div id="splash-screen">
@@ -542,7 +580,7 @@
 
 <!-- Main / Pause Menu -->
 <div id="start-screen" class="overlay">
- <div class="menu-card">
+ <div class="menu-card bb-menu-panel">
  <h1>BASTION BELL</h1>
  <div class="subtitle">3D High-Count Voxel Castle Defense — Menu Controller Nav, P1–P4 Parity, Boss +50%, Snow -50% &amp; Anti-Fall Warp (v27)</div>
  <div id="start-high-score" class="subtitle">High score: no high score yet</div>
@@ -622,7 +660,7 @@
 
 <!-- Options Menu -->
 <div id="options-screen" class="overlay">
- <div class="menu-card" style="max-width: 600px;">
+ <div class="menu-card bb-menu-panel" style="max-width: 600px;">
  <h1 style="font-size:28px;">OPTIONS</h1>
  <div class="subtitle">Difficulty, Audio, Display &amp; Keybindings</div>
  <div class="opt-scroll">
@@ -731,13 +769,13 @@
 
 <!-- Castle Armory Shop Modal -->
 <div id="shop-screen" class="overlay">
- <div class="shop-card">
+ <div class="shop-card bb-menu-panel">
  <div class="shop-top">
  <div>
  <h2>⚔️ CASTLE ARMORY SHOP</h2>
  <div id="shop-active-wep" class="shop-active-wep" style="font-size:12px; color:#38bdf8; font-weight:700;">Upgrading: M1911 (Mk I)</div>
  </div>
- <div class="shop-wallet" id="shop-wallet">🪙 0g 0s</div>
+ <div class="shop-wallet bb-gold" id="shop-wallet">🪙 0g 0s</div>
  </div>
  <div class="shop-tabs">
  <button class="shop-tab active" data-tab="weapons">🔫 Heavy &amp; Spec Weapons</button>
@@ -755,7 +793,7 @@
 
 <!-- Gold gift. Text only, same menu card. P1 T, P2 Y, P3 N, P4 B. Controller: LB+RB. -->
 <div id="gift-screen" class="overlay">
- <div class="menu-card" id="gift-card">
+ <div class="menu-card bb-menu-panel" id="gift-card">
  <h1>GIFT GOLD</h1>
  <div class="subtitle" id="gift-blurb">Give 1 gold (10 silver). Transfers only. Not new earnings.</div>
  <div id="gift-targets" class="btn-row"></div>
@@ -766,7 +804,7 @@
 
 <!-- In-play pause. Pointer-unlock still uses the start card's Resume Defense. -->
 <div id="pause-screen" class="overlay">
- <div class="menu-card" id="pause-card">
+ <div class="menu-card bb-menu-panel" id="pause-card">
  <h1>PAUSED</h1>
  <div class="subtitle" id="pause-who">Paused. Pause key, Start, or Resume.</div>
  <div class="btn-row"><button id="pause-resume-btn" class="btn" type="button">Resume</button><button id="pause-snow-btn" class="btn btn-sec" type="button" aria-pressed="true">Snow: On</button></div>
@@ -776,7 +814,7 @@
 
 <!-- Game Over Screen -->
 <div id="gameover-screen" class="overlay">
- <div class="menu-card">
+ <div class="menu-card bb-menu-panel">
  <h1 style="color:#ef4444;">THE CASTLE FELL</h1>
  <div class="subtitle" id="go-reason">The horde breached the drawbridge defenses.</div>
  <div id="go-retry-prompt" style="margin-bottom:14px; font-size:15px; font-weight:800; color:#fde047;">Would you like to try Wave 1 again?</div>
@@ -833,7 +871,7 @@
 
  <div id="active-buffs"></div>
 
- <div id="top-panel">
+ <div id="top-panel" class="bb-hud-panel">
  <div id="wave-title">INTERMISSION — WAVE 1</div>
  <div id="wave-sub">Next Horde: 2:00 &nbsp;•&nbsp; Shoot the Bell to Start!</div>
  <div id="gate-wrap">
@@ -843,15 +881,15 @@
  </div>
  </div>
 
- <div id="tower-panel">
+ <div id="tower-panel" class="bb-hud-panel">
  <div class="tower-row"><span class="t-label">⬅ Left Tower (Armory Shop)</span><span class="t-val t-ready">[E] OPEN</span></div>
  <div class="tower-row"><span class="t-label">⬆ Center (Healing Well)</span><span class="t-val t-heal">ACTIVE</span></div>
  <div class="tower-row"><span class="t-label">➡ Right (Power-Up)</span><span class="t-val t-ready" id="power-timer-hud">READY</span></div>
- <div id="currency-hud"><span>🪙 TREASURY</span><span id="coin-text">0g 0s</span></div>
+ <div id="currency-hud"><span>🪙 TREASURY</span><span id="coin-text" class="bb-gold">0g 0s</span></div>
  <div id="voxel-badge">Voxels Rendered: 0</div>
  </div>
 
- <div id="player-panel">
+ <div id="player-panel" class="bb-hud-panel">
  <div class="stat-header">
  <div id="hp-text">HP 100 / 100</div>
  <div id="lvl-text">LVL 1</div>
@@ -866,7 +904,7 @@
  </div>
  </div>
 
- <div id="weapon-panel">
+ <div id="weapon-panel" class="bb-hud-panel">
  <div id="turret-banner"></div>
  <div id="weapon-header">
  <span id="weapon-mods"></span>
@@ -1622,6 +1660,326 @@
  if (scene.fog) scene.fog.density = look.fog;
  sunLight.color.copy(look.sun);
  sunLight.intensity = look.sunI;
+ applyThemeAtmosphere();
+ }
+ // Update 6 stage 3 — visual only. scene.background, fog density, and sun intensity
+ // stay on the locked theme table above. This layer adds a gradient sky, a night
+ // ground mist, and a few shared torches. Day themes stay bright and unlit.
+ // Torches: 6 emissive meshes + 3 local lights in 1P/2P, 4 meshes + 2 lights in 3P/4P.
+ const THEME_SKY_R = 140;
+ const THEME_ATMO = {
+ classic: { zenith: 0x1d4ed8, horizon: 0xc7e7f8, haze: 0, hazeOpacity: 0, torch: 0 },
+ christmas: { zenith: 0xf8fafc, horizon: 0xd5e7f5, haze: 0, hazeOpacity: 0, torch: 0 },
+ patrick: { zenith: 0x84cc16, horizon: 0xd9f99d, haze: 0, hazeOpacity: 0, torch: 0 },
+ easter: { zenith: 0xf9a8d4, horizon: 0xe0f2fe, haze: 0, hazeOpacity: 0, torch: 0 },
+ july: { zenith: 0x1e3a8a, horizon: 0xfecaca, haze: 0, hazeOpacity: 0, torch: 0 },
+ halloween: { zenith: 0x14060e, horizon: 0x7c2d12, haze: 0xc2410c, hazeOpacity: 0.5, torch: 0xff6a00 },
+ haunted: { zenith: 0x07051c, horizon: 0x312e81, haze: 0x7c3aed, hazeOpacity: 0.5, torch: 0xfbbf24 }
+ };
+ let themeLookRoot = null;
+ let themeSkyMesh = null;
+ let themeSkyGeo = null;
+ let themeSkyMat = null;
+ let themeHaze = null;
+ let themeHazeGeo = null;
+ let themeHazeMat = null;
+ let themeHazeBase = null;
+ let themeTorchPostMat = null;
+ let themeTorchFlameMat = null;
+ const themeTorchMeshes = [];
+ const themeTorchLights = [];
+ const themeTorchColor = new THREE.Color(0xff6a00);
+ const themeZenithC = new THREE.Color(0x1d4ed8);
+ const themeHorizonC = new THREE.Color(0xc7e7f8);
+ const themeSkyMix = new THREE.Color();
+ let themeSkyZenithHex = 0x1d4ed8;
+ let themeSkyHorizonHex = 0xc7e7f8;
+ let themeTorchLive = false;
+ const themeTorchBaseI = 1.45;
+ function themeLookSkipRay() {}
+ function themePlayerCount() {
+ // numPlayers is declared later in this script. The first courtyard paint runs
+ // before that let is initialized, so a direct read would throw.
+ try {
+ if (typeof numPlayers === 'number' && numPlayers > 0) return numPlayers;
+ } catch (err) {
+ return 1;
+ }
+ return 1;
+ }
+ function themeTorchBudget() {
+ return themePlayerCount() >= 3 ? { meshes: 4, lights: 2 } : { meshes: 6, lights: 3 };
+ }
+ function themeByteHex(arr, i) {
+ const o = i * 3;
+ return (Math.round(arr[o] * 255) << 16) | (Math.round(arr[o + 1] * 255) << 8) | Math.round(arr[o + 2] * 255);
+ }
+ function paintThemeSky(zenithHex, horizonHex) {
+ themeSkyZenithHex = zenithHex >>> 0;
+ themeSkyHorizonHex = horizonHex >>> 0;
+ themeZenithC.setHex(themeSkyZenithHex);
+ themeHorizonC.setHex(themeSkyHorizonHex);
+ const pos = themeSkyGeo.attributes.position;
+ const col = themeSkyGeo.attributes.color;
+ const inv = 1 / THEME_SKY_R;
+ for (let i = 0; i < pos.count; i++) {
+ let t = pos.getY(i) * inv * 0.5 + 0.5;
+ if (t < 0) t = 0;
+ else if (t > 1) t = 1;
+ themeSkyMix.copy(themeHorizonC).lerp(themeZenithC, t);
+ col.setXYZ(i, themeSkyMix.r, themeSkyMix.g, themeSkyMix.b);
+ }
+ col.needsUpdate = true;
+ }
+ function themeSkySample() {
+ const out = { zenith: 0, horizon: 0 };
+ if (!themeSkyGeo || !themeSkyGeo.attributes.color) return out;
+ const pos = themeSkyGeo.attributes.position;
+ const arr = themeSkyGeo.attributes.color.array;
+ let top = 0;
+ let bot = 0;
+ let topY = -1e9;
+ let botY = 1e9;
+ for (let i = 0; i < pos.count; i++) {
+ const y = pos.getY(i);
+ if (y > topY) { topY = y; top = i; }
+ if (y < botY) { botY = y; bot = i; }
+ }
+ out.zenith = themeByteHex(arr, top);
+ out.horizon = themeByteHex(arr, bot);
+ return out;
+ }
+ function themeTorchSpots() {
+ const f = currentField();
+ const x = Math.max(11, Math.min(16, f.halfX - 3.5));
+ const zFar = f.zSouth + 7;
+ const zNear = -32;
+ const zMid = (zFar + zNear) * 0.5;
+ return [
+ { x: -x, z: zNear },
+ { x: x, z: zNear },
+ { x: -x, z: zMid },
+ { x: x, z: zMid },
+ { x: -x * 0.78, z: zFar },
+ { x: x * 0.78, z: zFar }
+ ];
+ }
+ function ensureThemeLook() {
+ if (themeLookRoot) return;
+ themeLookRoot = new THREE.Group();
+ themeLookRoot.name = 'theme-look';
+ themeLookRoot.frustumCulled = false;
+ scene.add(themeLookRoot);
+ themeSkyGeo = new THREE.SphereGeometry(THEME_SKY_R, 16, 10);
+ themeSkyGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(themeSkyGeo.attributes.position.count * 3), 3));
+ themeSkyGeo.userData.shared = true;
+ themeSkyMat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false });
+ themeSkyMat.userData.shared = true;
+ themeSkyMesh = new THREE.Mesh(themeSkyGeo, themeSkyMat);
+ themeSkyMesh.frustumCulled = false;
+ themeSkyMesh.renderOrder = -2;
+ themeSkyMesh.position.set(0, 6, -40);
+ themeSkyMesh.userData.isThemeSky = true;
+ themeSkyMesh.raycast = themeLookSkipRay;
+ themeLookRoot.add(themeSkyMesh);
+ const hazeN = 24;
+ themeHazeBase = new Float32Array(hazeN * 3);
+ themeHazeGeo = new THREE.BufferGeometry();
+ themeHazeGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(hazeN * 3), 3));
+ themeHazeGeo.userData.shared = true;
+ themeHazeMat = new THREE.PointsMaterial({ color: 0x000000, size: 16, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false });
+ themeHazeMat.userData.shared = true;
+ themeHaze = new THREE.Points(themeHazeGeo, themeHazeMat);
+ themeHaze.frustumCulled = false;
+ themeHaze.visible = false;
+ themeHaze.userData.isThemeHaze = true;
+ themeHaze.raycast = themeLookSkipRay;
+ themeLookRoot.add(themeHaze);
+ const postGeo = new THREE.BoxGeometry(0.16, 1.4, 0.16);
+ const flameGeo = new THREE.BoxGeometry(0.22, 0.32, 0.22);
+ postGeo.userData.shared = true;
+ flameGeo.userData.shared = true;
+ themeTorchPostMat = new THREE.MeshLambertMaterial({ color: 0x3f3f46 });
+ themeTorchFlameMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+ themeTorchPostMat.userData.shared = true;
+ themeTorchFlameMat.userData.shared = true;
+ for (let i = 0; i < 6; i++) {
+ const g = new THREE.Group();
+ const post = new THREE.Mesh(postGeo, themeTorchPostMat);
+ post.position.y = 0.7;
+ post.castShadow = false;
+ post.receiveShadow = false;
+ post.raycast = themeLookSkipRay;
+ const flame = new THREE.Mesh(flameGeo, themeTorchFlameMat);
+ flame.position.y = 1.52;
+ flame.raycast = themeLookSkipRay;
+ flame.userData.isThemeFlame = true;
+ g.add(post);
+ g.add(flame);
+ g.visible = false;
+ g.frustumCulled = false;
+ g.userData.isThemeTorch = true;
+ themeLookRoot.add(g);
+ themeTorchMeshes.push(g);
+ }
+ for (let i = 0; i < 3; i++) {
+ const light = new THREE.PointLight(0xff6a00, 0, 13, 2);
+ light.castShadow = false;
+ light.visible = false;
+ light.userData.isThemeTorchLight = true;
+ themeLookRoot.add(light);
+ themeTorchLights.push(light);
+ }
+ }
+ function layoutThemeHaze() {
+ const f = currentField();
+ const arr = themeHazeGeo.attributes.position.array;
+ const base = themeHazeBase;
+ const n = base.length / 3;
+ const span = Math.max(8, -20 - f.zSouth);
+ const reach = Math.max(6, f.halfX - 3);
+ for (let i = 0; i < n; i++) {
+ const o = i * 3;
+ const side = (i % 2 === 0) ? -1 : 1;
+ const x = side * (2 + (i * 3.1) % reach);
+ const y = 0.32 + (i % 5) * 0.14;
+ const z = f.zSouth + 4 + ((i * 5.7) % span);
+ base[o] = x;
+ base[o + 1] = y;
+ base[o + 2] = z;
+ arr[o] = x;
+ arr[o + 1] = y;
+ arr[o + 2] = z;
+ }
+ themeHazeGeo.attributes.position.needsUpdate = true;
+ themeHaze.visible = true;
+ }
+ function syncThemeTorchBudget() {
+ const budget = themeTorchBudget();
+ for (let i = 0; i < themeTorchMeshes.length; i++) themeTorchMeshes[i].visible = !!(themeTorchLive && i < budget.meshes);
+ for (let i = 0; i < themeTorchLights.length; i++) {
+ const on = !!(themeTorchLive && i < budget.lights);
+ themeTorchLights[i].visible = on;
+ if (!on) themeTorchLights[i].intensity = 0;
+ }
+ return budget;
+ }
+ function placeThemeTorches() {
+ const spots = themeTorchSpots();
+ const night = themeTorchLive;
+ const col = night ? (themeTorchColor.getHex()) : 0;
+ const lightAt = [0, 3, 2];
+ for (let i = 0; i < themeTorchMeshes.length; i++) {
+ const spot = spots[i];
+ themeTorchMeshes[i].position.set(spot.x, getGroundHeight(spot.x, spot.z), spot.z);
+ }
+ for (let i = 0; i < themeTorchLights.length; i++) {
+ const spot = spots[lightAt[i]];
+ const gy = getGroundHeight(spot.x, spot.z);
+ const light = themeTorchLights[i];
+ light.position.set(spot.x, gy + 1.7, spot.z);
+ light.color.setHex(night ? col : 0x000000);
+ light.intensity = night ? themeTorchBaseI : 0;
+ }
+ if (themeTorchFlameMat) themeTorchFlameMat.color.setHex(night ? col : 0x000000);
+ syncThemeTorchBudget();
+ }
+ function applyThemeAtmosphere() {
+ ensureThemeLook();
+ const id = themeId();
+ const atmo = THEME_ATMO[id] || THEME_ATMO.classic;
+ paintThemeSky(atmo.zenith, atmo.horizon);
+ const night = nightTheme(id);
+ themeTorchLive = night;
+ if (night) {
+ themeHazeMat.color.setHex(atmo.haze);
+ themeHazeMat.opacity = atmo.hazeOpacity;
+ themeTorchColor.setHex(atmo.torch);
+ layoutThemeHaze();
+ } else {
+ themeHazeMat.color.setHex(0x000000);
+ themeHazeMat.opacity = 0;
+ themeHaze.visible = false;
+ themeTorchColor.setHex(0x000000);
+ }
+ placeThemeTorches();
+ themeSkyMesh.visible = true;
+ }
+ function tickThemeAtmosphere(t) {
+ if (!themeSkyMesh) return;
+ const storm = isStormActive();
+ themeSkyMesh.visible = !storm;
+ if (themeHaze) themeHaze.visible = !!(themeTorchLive && !storm);
+ syncThemeTorchBudget();
+ if (themeTorchLive && themeHaze && themeHaze.visible && themeHazeBase) {
+ const arr = themeHazeGeo.attributes.position.array;
+ const base = themeHazeBase;
+ const n = base.length / 3;
+ for (let i = 0; i < n; i++) {
+ const o = i * 3;
+ arr[o] = base[o] + Math.sin(t * 0.35 + i) * 0.4;
+ arr[o + 1] = base[o + 1] + Math.sin(t * 0.5 + i * 0.4) * 0.05;
+ arr[o + 2] = base[o + 2] + Math.cos(t * 0.28 + i * 0.5) * 0.4;
+ }
+ themeHazeGeo.attributes.position.needsUpdate = true;
+ }
+ if (!themeTorchLive) return;
+ const pulse = 0.78 + 0.22 * Math.sin(t * 7.4);
+ themeTorchFlameMat.color.copy(themeTorchColor).multiplyScalar(pulse);
+ for (let i = 0; i < themeTorchLights.length; i++) {
+ const light = themeTorchLights[i];
+ if (!light.visible) continue;
+ light.intensity = themeTorchBaseI * (0.82 + 0.18 * Math.sin(t * (6.2 + i * 0.7) + i));
+ }
+ }
+ function themeLook() {
+ if (!themeSkyMesh) applyThemeAtmosphere();
+ const id = themeId();
+ const night = nightTheme(id);
+ const budget = syncThemeTorchBudget();
+ const sample = themeSkySample();
+ let torchVisible = 0;
+ let torchLit = 0;
+ for (let i = 0; i < themeTorchMeshes.length; i++) if (themeTorchMeshes[i].visible) torchVisible++;
+ for (let i = 0; i < themeTorchLights.length; i++) {
+ const light = themeTorchLights[i];
+ if (light.visible && light.intensity > 0) torchLit++;
+ }
+ return {
+ id: id,
+ night: night,
+ day: !night,
+ sky: scene.background ? scene.background.getHex() : 0,
+ fog: (scene.fog && scene.fog.color) ? scene.fog.color.getHex() : 0,
+ fogDensity: scene.fog ? scene.fog.density : 0,
+ sun: sunLight.color.getHex(),
+ sunIntensity: sunLight.intensity,
+ hemi: hemiLight.color.getHex(),
+ zenith: themeSkyZenithHex,
+ horizon: themeSkyHorizonHex,
+ zenithSample: sample.zenith,
+ horizonSample: sample.horizon,
+ skyOn: !!themeSkyMesh,
+ skyVisible: !!(themeSkyMesh && themeSkyMesh.visible),
+ haze: (night && themeHazeMat) ? themeHazeMat.color.getHex() : 0,
+ hazeOpacity: themeHazeMat ? Math.round(themeHazeMat.opacity * 1000) / 1000 : 0,
+ hazeOn: !!(themeHaze && themeHaze.visible),
+ hazeCount: themeHazeBase ? (themeHazeBase.length / 3) : 0,
+ torchOn: night && torchVisible > 0,
+ torchColor: night ? themeTorchColor.getHex() : 0,
+ torchCount: torchVisible,
+ torchLights: torchLit,
+ torchCap: 6,
+ torchLightCap: 3,
+ torchBudget: budget.meshes,
+ torchLightBudget: budget.lights,
+ torchDistance: themeTorchLights.length ? themeTorchLights[0].distance : 0,
+ torchParent: (themeTorchMeshes[0] && themeTorchMeshes[0].parent) ? themeTorchMeshes[0].parent.name : '',
+ flameMaterial: themeTorchFlameMat ? themeTorchFlameMat.uuid : '',
+ postMaterial: themeTorchPostMat ? themeTorchPostMat.uuid : '',
+ numPlayers: themePlayerCount(),
+ nightGlow: night
+ };
  }
  function tickPlayerChill(dt) {
  for (let i = 0; i < 4; i++) if (playerChill[i] > 0) playerChill[i] = Math.max(0, playerChill[i] - dt);
@@ -2834,6 +3192,7 @@
  crowTimer = 3.2;
  }
  function updateThemeFx(dt) {
+ tickThemeAtmosphere(simTime);
  if (!themeRoot) return;
  const id = themeId();
  if (id === 'christmas') { updateChristmasFx(dt); return; }
@@ -3254,6 +3613,14 @@
  const colliders = [];
  let worldMesh = null;
  let worldMat = null;
+ let castleOutline = null;
+ let castleWearGroup = null;
+ let castleWearSoot = null;
+ let castleWearCrack = null;
+ let castleWearChip = null;
+ let castleWearGeo = null;
+ let castleWearApplied = -1;
+ let castleWearShown = 0;
  let baseVoxelCount = 0;
  let courtyard = null;
  let groundGrid = null;
@@ -4502,6 +4869,399 @@
  return courtyard;
  }
 
+ // Shared inverted-hull ink. One material, shells created once per mesh, never per frame.
+ let toonOutlineMat = null;
+ function outlineMaterial() {
+ if (toonOutlineMat) return toonOutlineMat;
+ toonOutlineMat = new THREE.MeshBasicMaterial({
+ color: 0x141018,
+ side: THREE.BackSide,
+ toneMapped: false,
+ polygonOffset: true,
+ polygonOffsetFactor: 1,
+ polygonOffsetUnits: 1
+ });
+ toonOutlineMat.userData.shared = true;
+ toonOutlineMat.userData.isOutline = true;
+ return toonOutlineMat;
+ }
+ function addOutlineShell(mesh) {
+ if (!mesh || !mesh.isMesh || !mesh.geometry || Array.isArray(mesh.material)) return 0;
+ if (mesh.userData && (mesh.userData.isOutline || mesh.userData.noOutline || mesh.userData.frostIce)) return 0;
+ const kids = mesh.children;
+ for (let i = 0; i < kids.length; i++) {
+ if (kids[i].userData && kids[i].userData.isOutline) return 0;
+ }
+ const geo = mesh.geometry;
+ if (!geo.boundingBox) geo.computeBoundingBox();
+ const bb = geo.boundingBox;
+ if (!bb) return 0;
+ const sx = bb.max.x - bb.min.x;
+ const sy = bb.max.y - bb.min.y;
+ const sz = bb.max.z - bb.min.z;
+ if (Math.max(sx, sy, sz) < 0.14) return 0;
+ const boost = (axis) => 1 + Math.min(0.35, 0.045 / Math.max(axis, 0.05));
+ const shell = new THREE.Mesh(geo, outlineMaterial());
+ shell.name = 'toon-outline';
+ shell.userData.isOutline = true;
+ shell.userData.noOutline = true;
+ shell.castShadow = false;
+ shell.receiveShadow = false;
+ shell.renderOrder = (mesh.renderOrder || 0) + 1;
+ shell.scale.set(boost(sx), boost(sy), boost(sz));
+ shell.raycast = function () {};
+ mesh.add(shell);
+ return 1;
+ }
+ function attachToonOutline(root) {
+ if (!root) return 0;
+ const list = [];
+ root.traverse(obj => {
+ if (obj.isMesh && !(obj.userData && obj.userData.isOutline)) list.push(obj);
+ });
+ let n = 0;
+ for (let i = 0; i < list.length; i++) n += addOutlineShell(list[i]);
+ return n;
+ }
+ function addCastleInk(role, x, y, z, w, h, d) {
+ const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), outlineMaterial());
+ mesh.name = 'castle-toon-outline';
+ mesh.position.set(x, y, z);
+ mesh.userData.isOutline = true;
+ mesh.userData.noOutline = true;
+ mesh.userData.outlineRole = role;
+ mesh.castShadow = false;
+ mesh.receiveShadow = false;
+ mesh.renderOrder = 1;
+ mesh.raycast = function () {};
+ castleOutline.add(mesh);
+ return mesh;
+ }
+ function buildCastleOutlines() {
+ if (castleOutline) return;
+ castleOutline = new THREE.Group();
+ castleOutline.name = 'castle-toon-outline';
+ castleOutline.userData.isOutline = true;
+ const pad = 0.28;
+ const box = (role, x0, y0, z0, x1, y1, z1) => {
+ addCastleInk(role, (x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5, Math.abs(x1 - x0) + pad, Math.abs(y1 - y0) + pad, Math.abs(z1 - z0) + pad);
+ };
+ box('wall', -14, 3.0, 3.5, -5.0, 7.5, 4.5);
+ box('wall', 5.0, 3.0, 3.5, 14, 7.5, 4.5);
+ box('wall', -18, 3.0, 4.5, -17, 8.0, 22);
+ box('wall', 17, 3.0, 4.5, 18, 8.0, 22);
+ box('wall', -18, 3.0, 21.5, 18, 8.5, 22.5);
+ box('gate', -5.5, 3.0, 2.0, -4.0, 9.5, 4.5);
+ box('gate', 4.0, 3.0, 2.0, 5.5, 9.5, 4.5);
+ box('gate', -5.5, 8.5, 2.0, 5.5, 10.0, 4.5);
+ box('gate', -4.55, 2.5, -3.85, -3.95, 9.2, -3.15);
+ box('gate', 3.95, 2.5, -3.85, 4.55, 9.2, -3.15);
+ box('gate', -4.5, 8.35, -3.85, 4.5, 9.45, -3.15);
+ const ring = (cx, cz, radius, y0, y1) => {
+ const segs = 10;
+ const height = (y1 - y0) + 0.16;
+ const cy = (y0 + y1) * 0.5;
+ const radial = 0.18;
+ const arc = (Math.PI * 2 * radius) / segs * 1.02;
+ for (let i = 0; i < segs; i++) {
+ const a = (i / segs) * Math.PI * 2;
+ const mesh = addCastleInk('keep', cx + Math.cos(a) * radius, cy, cz + Math.sin(a) * radius, radial, height, arc);
+ mesh.rotation.y = a;
+ }
+ };
+ ring(0, 19.5, 4.16, 3.0, 16.5);
+ ring(-13.5, 14.5, 3.66, 3.0, 14.5);
+ ring(13.5, 14.5, 3.66, 3.0, 14.5);
+ scene.add(castleOutline);
+ }
+ function castleWearSkipRay() {}
+ function castleWearScore() {
+ if (!state || !(state.maxCastleHp > 0)) return 0;
+ let hp = state.castleHp;
+ if (!(hp > 0)) hp = 0;
+ const max = state.maxCastleHp;
+ if (hp > max) hp = max;
+ const ratio = hp / max;
+ if (ratio >= 0.995) return 0;
+ let score = Math.round((1 - ratio) * 100);
+ if (score < 0) score = 0;
+ if (score > 100) score = 100;
+ return score;
+ }
+ function castleWearLevel(score) {
+ if (score <= 2) return 0;
+ if (score < 34) return 1;
+ if (score < 67) return 2;
+ return 3;
+ }
+ function castleWearOpacity(score, start, full, maxOp) {
+ if (score <= start) return 0;
+ let t = (score - start) / (full - start);
+ if (t > 1) t = 1;
+ return maxOp * t;
+ }
+ function makeCastleWearMat(color) {
+ const mat = new THREE.MeshBasicMaterial({
+ color: color,
+ transparent: true,
+ opacity: 0,
+ depthWrite: false,
+ toneMapped: false,
+ polygonOffset: true,
+ polygonOffsetFactor: -2,
+ polygonOffsetUnits: -2
+ });
+ mat.userData.isCastleWear = true;
+ mat.userData.shared = true;
+ return mat;
+ }
+ function buildCastleWear() {
+ if (castleWearGroup) return;
+ castleWearGroup = new THREE.Group();
+ castleWearGroup.name = 'castle-wear';
+ castleWearGroup.userData.isCastleWear = true;
+ castleWearGeo = new THREE.BoxGeometry(1, 1, 1);
+ castleWearSoot = makeCastleWearMat(0x3a332c);
+ castleWearCrack = makeCastleWearMat(0x0c0a09);
+ castleWearChip = makeCastleWearMat(0x161311);
+ const sootMin = [8, 8, 12, 12, 16, 16, 20, 20, 24, 24, 28, 32, 36];
+ const crackMin = [18, 18, 18, 18, 18, 18, 18, 30, 30, 30, 30, 30, 30, 42, 42, 42, 42, 42, 42, 42, 58, 58, 58, 58, 58, 58, 74, 74];
+ const chipMin = [62, 62, 62, 62, 62, 74, 74, 74, 74, 74, 88, 88, 88, 88];
+ const faces = [
+ { axis: 'z', a0: -13.4, a1: -5.5, y0: 3.8, y1: 7.0, b: 4.6, rotY: 0, sign: 1, soot: 2, crack: 4, chip: 2 },
+ { axis: 'z', a0: 5.5, a1: 13.4, y0: 3.8, y1: 7.0, b: 4.6, rotY: 0, sign: 1, soot: 2, crack: 4, chip: 2 },
+ { axis: 'z', a0: -13.2, a1: -5.6, y0: 3.9, y1: 6.9, b: 3.42, rotY: 0, sign: -1, soot: 1, crack: 2, chip: 1 },
+ { axis: 'z', a0: 5.6, a1: 13.2, y0: 3.9, y1: 6.9, b: 3.42, rotY: 0, sign: -1, soot: 1, crack: 2, chip: 1 },
+ { axis: 'x', a0: 6.2, a1: 20.4, y0: 3.7, y1: 7.4, b: -16.94, rotY: Math.PI / 2, sign: 1, soot: 1, crack: 4, chip: 2 },
+ { axis: 'x', a0: 6.4, a1: 20.2, y0: 3.7, y1: 7.4, b: 16.94, rotY: Math.PI / 2, sign: -1, soot: 1, crack: 3, chip: 2 },
+ { axis: 'z', a0: -12.0, a1: 12.0, y0: 3.8, y1: 7.6, b: 21.42, rotY: 0, sign: -1, soot: 2, crack: 3, chip: 1 },
+ { axis: 'x', a0: 2.4, a1: 4.2, y0: 3.6, y1: 8.8, b: -3.9, rotY: Math.PI / 2, sign: 1, soot: 1, crack: 2, chip: 1 },
+ { axis: 'x', a0: 2.4, a1: 4.2, y0: 3.6, y1: 8.8, b: 3.9, rotY: Math.PI / 2, sign: -1, soot: 1, crack: 2, chip: 1 },
+ { axis: 'z', a0: -3.2, a1: 3.2, y0: 8.75, y1: 9.55, b: 4.6, rotY: 0, sign: 1, soot: 1, crack: 2, chip: 1 }
+ ];
+ const rng = mulberry32(0xC0FFEE01);
+ const unit = function () { return rng(); };
+ let si = 0;
+ let ci = 0;
+ let hi = 0;
+ const addWear = function (kind, minScore, x, y, z, sx, sy, sz, rotY, rotZ) {
+ const mat = kind === 'crack' ? castleWearCrack : (kind === 'chip' ? castleWearChip : castleWearSoot);
+ const mesh = new THREE.Mesh(castleWearGeo, mat);
+ mesh.name = 'castle-wear-decal';
+ mesh.position.set(x, y, z);
+ mesh.scale.set(sx, sy, sz);
+ mesh.rotation.set(0, rotY || 0, rotZ || 0);
+ mesh.visible = false;
+ mesh.castShadow = false;
+ mesh.receiveShadow = false;
+ mesh.frustumCulled = true;
+ mesh.renderOrder = kind === 'chip' ? 3 : 2;
+ mesh.matrixAutoUpdate = false;
+ mesh.updateMatrix();
+ mesh.userData.noOutline = true;
+ mesh.userData.isCastleWear = true;
+ mesh.userData.wearKind = kind;
+ mesh.userData.wearMin = minScore;
+ mesh.raycast = castleWearSkipRay;
+ castleWearGroup.add(mesh);
+ };
+ const lay = function (face, n, mins, idx, kind) {
+ for (let i = 0; i < n; i++) {
+ const u = 0.12 + unit() * 0.76;
+ const v = 0.18 + unit() * 0.64;
+ let x;
+ let y = face.y0 + (face.y1 - face.y0) * v;
+ let z;
+ if (face.axis === 'z') {
+ x = face.a0 + (face.a1 - face.a0) * u;
+ z = face.b;
+ } else {
+ z = face.a0 + (face.a1 - face.a0) * u;
+ x = face.b;
+ }
+ const slash = kind === 'crack';
+ const chip = kind === 'chip';
+ const sx = slash ? (0.85 + unit() * 0.7) : (chip ? (0.26 + unit() * 0.16) : (1.5 + unit() * 1.3));
+ const sy = slash ? (0.045 + unit() * 0.02) : (chip ? (0.16 + unit() * 0.12) : (0.9 + unit() * 1.0));
+ const sz = chip ? (0.14 + unit() * 0.1) : 0.045;
+ const rotZ = slash ? (unit() * 2.4 - 1.2) : (unit() * 0.5 - 0.25);
+ if (chip) {
+ if (face.axis === 'z') z += face.sign * 0.12;
+ else x += face.sign * 0.12;
+ }
+ addWear(kind, mins[idx], x, y, z, sx, sy, sz, face.rotY, rotZ);
+ idx++;
+ }
+ return idx;
+ };
+ for (let f = 0; f < faces.length; f++) {
+ const face = faces[f];
+ si = lay(face, face.soot, sootMin, si, 'soot');
+ ci = lay(face, face.crack, crackMin, ci, 'crack');
+ hi = lay(face, face.chip, chipMin, hi, 'chip');
+ }
+ if (si !== sootMin.length || ci !== crackMin.length || hi !== chipMin.length) {
+ throw new Error('castle wear layout');
+ }
+ castleWearApplied = -1;
+ castleWearShown = 0;
+ scene.add(castleWearGroup);
+ }
+ function syncCastleWear() {
+ if (!castleWearGroup || !castleWearSoot) return;
+ const score = castleWearScore();
+ if (score === castleWearApplied) return;
+ castleWearApplied = score;
+ const sootOp = castleWearOpacity(score, 4, 40, 0.42);
+ const crackOp = castleWearOpacity(score, 12, 70, 0.92);
+ const chipOp = castleWearOpacity(score, 50, 94, 0.96);
+ castleWearSoot.opacity = sootOp;
+ castleWearCrack.opacity = crackOp;
+ castleWearChip.opacity = chipOp;
+ const kids = castleWearGroup.children;
+ let shown = 0;
+ for (let i = 0; i < kids.length; i++) {
+ const mesh = kids[i];
+ const minScore = mesh.userData.wearMin || 0;
+ const kind = mesh.userData.wearKind;
+ const op = kind === 'chip' ? chipOp : (kind === 'crack' ? crackOp : sootOp);
+ const on = score >= minScore && op > 0.01;
+ if (mesh.visible !== on) mesh.visible = on;
+ if (on) shown++;
+ }
+ castleWearShown = shown;
+ }
+ function castleWearInfo() {
+ syncCastleWear();
+ const max = (state && state.maxCastleHp > 0) ? state.maxCastleHp : 1;
+ let hp = state ? state.castleHp : 0;
+ if (!(hp > 0)) hp = 0;
+ if (hp > max) hp = max;
+ const ratio = hp / max;
+ const score = castleWearScore();
+ const mats = [];
+ if (castleWearSoot) mats.push(castleWearSoot.uuid);
+ if (castleWearCrack) mats.push(castleWearCrack.uuid);
+ if (castleWearChip) mats.push(castleWearChip.uuid);
+ let inScene = false;
+ if (castleWearGroup) {
+ let p = castleWearGroup;
+ while (p) {
+ if (p === scene) inScene = true;
+ p = p.parent;
+ }
+ }
+ const sootOp = castleWearSoot ? castleWearSoot.opacity : 0;
+ const crackOp = castleWearCrack ? castleWearCrack.opacity : 0;
+ const chipOp = castleWearChip ? castleWearChip.opacity : 0;
+ return {
+ score: score,
+ level: castleWearLevel(score),
+ ratio: ratio,
+ hp: state ? state.castleHp : 0,
+ maxHp: state ? state.maxCastleHp : 0,
+ shown: castleWearShown,
+ total: castleWearGroup ? castleWearGroup.children.length : 0,
+ ink: sootOp + crackOp + chipOp,
+ soot: sootOp,
+ crack: crackOp,
+ chip: chipOp,
+ mats: mats.length,
+ matIds: mats,
+ shared: mats.length === 3,
+ inScene: inScene,
+ groups: (castleWearGroup && castleWearGroup.parent) ? 1 : 0,
+ blocks: colliders.length
+ };
+ }
+ function outlineNodeInfo(root) {
+ const row = { count: 0, inScene: false, visible: false, material: '' };
+ if (!root) return row;
+ let p = root;
+ while (p) {
+ if (p === scene) row.inScene = true;
+ p = p.parent;
+ }
+ row.visible = root.visible !== false;
+ root.traverse(obj => {
+ if (!obj.isMesh || !obj.userData || !obj.userData.isOutline) return;
+ row.count++;
+ if (!row.material && obj.material && obj.material.uuid) row.material = obj.material.uuid;
+ });
+ return row;
+ }
+ function collectOutlineInfo() {
+ const mat = outlineMaterial();
+ const players = [];
+ const p1 = outlineNodeInfo(typeof p1Avatar !== 'undefined' ? p1Avatar : null);
+ players.push({ index: 0, count: p1.count, inScene: p1.inScene, visible: p1.visible, material: p1.material });
+ if (typeof extraPlayers !== 'undefined') {
+ for (let i = 0; i < extraPlayers.length; i++) {
+ const ep = extraPlayers[i];
+ const c = outlineNodeInfo(ep && ep.avatar);
+ players.push({ index: ep ? ep.index : i + 1, count: c.count, inScene: c.inScene, visible: c.visible, material: c.material });
+ }
+ }
+ let foe = null;
+ let boss = null;
+ if (typeof monsters !== 'undefined') {
+ for (let i = 0; i < monsters.length; i++) {
+ const m = monsters[i];
+ if (!m || !m.mesh || m.debugTarget) continue;
+ const isBoss = !!(m.base && m.base.isBoss) || !!m.bossKind;
+ const c = outlineNodeInfo(m.mesh);
+ const row = { index: i, type: m.typeKey || '', boss: isBoss, count: c.count, inScene: c.inScene, visible: m.mesh.visible !== false, material: c.material };
+ if (isBoss) { if (!boss) boss = row; }
+ else if (!foe) foe = row;
+ if (foe && boss) break;
+ }
+ }
+ let walls = 0, keep = 0, gate = 0, total = 0, castleMat = '';
+ const castle = { total: 0, walls: 0, keep: 0, gate: 0, inScene: false, visible: false, material: '' };
+ if (castleOutline) {
+ let p = castleOutline;
+ while (p) { if (p === scene) castle.inScene = true; p = p.parent; }
+ castle.visible = castleOutline.visible !== false;
+ castleOutline.traverse(obj => {
+ if (!obj.isMesh || !obj.userData || !obj.userData.isOutline) return;
+ total++;
+ if (!castleMat && obj.material && obj.material.uuid) castleMat = obj.material.uuid;
+ if (obj.userData.outlineRole === 'wall') walls++;
+ else if (obj.userData.outlineRole === 'keep') keep++;
+ else if (obj.userData.outlineRole === 'gate') gate++;
+ });
+ castle.total = total;
+ castle.walls = walls;
+ castle.keep = keep;
+ castle.gate = gate;
+ castle.material = castleMat;
+ }
+ const samples = [];
+ if (players[0] && players[0].material) samples.push(players[0].material);
+ if (foe && foe.material) samples.push(foe.material);
+ if (boss && boss.material) samples.push(boss.material);
+ if (castleMat) samples.push(castleMat);
+ let sameMaterial = samples.length > 0;
+ for (let i = 1; i < samples.length; i++) if (samples[i] !== samples[0]) sameMaterial = false;
+ return {
+ hasOutlines: !!(players[0] && players[0].count > 0 && total > 0 && walls > 0 && keep > 0 && gate > 0),
+ kind: 'inverted-hull',
+ shared: !!(mat && mat.userData && mat.userData.shared),
+ materialCount: mat ? 1 : 0,
+ material: mat ? mat.uuid : '',
+ sameMaterial: sameMaterial,
+ side: mat && mat.side === THREE.BackSide ? 'back' : 'other',
+ ink: mat ? mat.color.getHex() : 0,
+ theme: themeId(),
+ numPlayers: typeof numPlayers === 'number' ? numPlayers : 1,
+ player: players[0],
+ players: players,
+ foe: foe,
+ boss: boss,
+ castle: castle
+ };
+ }
+
  function buildWorld() {
  // 1. Distant snowy skirt outside every meadow. The playable field is painted per seed.
  for (let x = -68; x <= 68; x += 1.0) {
@@ -4807,6 +5567,8 @@
  window.voxelNormalMap = createVoxelNormalMap();
  baseVoxelCount = worldVoxels.length;
  commitCourtyard(fallbackLayout(''), { force: true });
+ buildCastleOutlines();
+ buildCastleWear();
  }
 
  buildWorld();
@@ -7584,6 +8346,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  wallBraceGroup.add(cap);
  }
  }
+ attachToonOutline(wallBraceGroup);
  scene.add(wallBraceGroup);
  }
  function applyWallTier(level) {
@@ -7792,7 +8555,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const eyeMat = m.mesh.userData && m.mesh.userData.eyeMat;
  m.mesh.traverse(obj => {
  if (!obj.isMesh || !obj.material || Array.isArray(obj.material)) return;
- if (obj.userData && (obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist)) return;
+ if (obj.userData && (obj.userData.isOutline || obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist)) return;
  const mat0 = obj.material;
  if (mat0.emissive) {
  const cur = mat0.emissive.getHex();
@@ -7822,7 +8585,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let intensity = 0;
  m.mesh.traverse(obj => {
  if (!obj.isMesh || !obj.material || !obj.material.emissive) return;
- if (obj.userData && (obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist)) return;
+ if (obj.userData && (obj.userData.isOutline || obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist)) return;
  const e = obj.material.emissive.getHex();
  const inten = obj.material.emissiveIntensity || 0;
  if (e !== 0 && inten > 0 && inten >= intensity) { hex = e; intensity = inten; }
@@ -7832,6 +8595,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  function disposeObject3D(obj) {
  if (!obj) return;
  obj.traverse(child => {
+ if (child.userData && child.userData.isOutline) return;
  if (child.geometry && child.geometry !== partGeo && !(child.geometry.userData && child.geometry.userData.shared)) child.geometry.dispose();
  if (child.material) {
  const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -7870,6 +8634,212 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const line = new THREE.Line(geo, mat);
  scene.add(line);
  tracers.push({ line, life: 0.07 });
+ }
+
+ // Update 6 visual-only hit flashes, sparks, and coin pops.
+ // Slots and materials are created once and reused. Nothing here allocates per frame.
+ // Live cap is HIT_FX_CAP in 1P/2P (8 flashes + 32 sparks + 8 coin bits = 48).
+ // With 3–4 players the live cap tightens to HIT_FX_CAP_4P (4 + 16 + 8 = 28).
+ const HIT_FX_CAP = 48;
+ const HIT_FX_CAP_4P = 28;
+ const HIT_FX_DIR = new Float32Array([
+ 1.0, 1.4, 0.2,
+ -0.8, 1.6, 0.5,
+ 0.3, 1.8, -1.0,
+ -0.4, 1.2, -0.7,
+ 0.9, 1.5, 0.8,
+ -1.0, 1.7, -0.2,
+ 0.15, 2.0, 0.35,
+ -0.55, 1.3, 0.9
+ ]);
+ const hitFxLimitScratch = { flashes: 8, sparks: 32, coins: 8, sparksPerHit: 4, coinBits: 5, cap: HIT_FX_CAP };
+ const hitFxRoot = new THREE.Group();
+ hitFxRoot.name = 'hit-fx-pool';
+ hitFxRoot.frustumCulled = false;
+ const hitFlashMat = new THREE.MeshBasicMaterial({ color: 0xfff6d0, transparent: true, opacity: 0.92, depthWrite: false, toneMapped: false });
+ const hitSparkMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 1, depthWrite: false, toneMapped: false });
+ const coinPopMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 1, depthWrite: false, toneMapped: false });
+ hitFlashMat.userData.shared = true;
+ hitSparkMat.userData.shared = true;
+ coinPopMat.userData.shared = true;
+ const hitFlashGeo = new THREE.BoxGeometry(0.72, 0.72, 0.72);
+ const hitSparkGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+ const coinPopGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
+ hitFlashGeo.userData.shared = true;
+ hitSparkGeo.userData.shared = true;
+ coinPopGeo.userData.shared = true;
+ const hitFlashes = [];
+ const hitSparks = [];
+ const coinPopBits = [];
+ const hitFlashCursor = { n: 0 };
+ const hitSparkCursor = { n: 0 };
+ const coinPopCursor = { n: 0 };
+ let hitSparkDir = 0;
+ let coinPopDir = 0;
+ let hitFxHits = 0;
+ let hitFxPops = 0;
+ let hitFxLastX = 0, hitFxLastY = 0, hitFxLastZ = 0;
+ let coinPopLastX = 0, coinPopLastY = 0, coinPopLastZ = 0;
+ function makeHitFxSlot(kind, geo, mat) {
+ const mesh = new THREE.Mesh(geo, mat);
+ mesh.name = kind === 'flash' ? 'hit-flash' : (kind === 'spark' ? 'hit-spark' : 'coin-pop');
+ mesh.userData.isHitFx = true;
+ mesh.userData.hitFx = kind;
+ mesh.userData.noOutline = true;
+ mesh.visible = false;
+ mesh.frustumCulled = false;
+ mesh.castShadow = false;
+ mesh.receiveShadow = false;
+ mesh.renderOrder = 3;
+ mesh.raycast = function () {};
+ hitFxRoot.add(mesh);
+ return { mesh: mesh, kind: kind, life: 0, max: 0.2, vx: 0, vy: 0, vz: 0, base: 1 };
+ }
+ function buildHitFxPool() {
+ for (let i = 0; i < 8; i++) hitFlashes.push(makeHitFxSlot('flash', hitFlashGeo, hitFlashMat));
+ for (let i = 0; i < 32; i++) hitSparks.push(makeHitFxSlot('spark', hitSparkGeo, hitSparkMat));
+ for (let i = 0; i < 8; i++) coinPopBits.push(makeHitFxSlot('coin', coinPopGeo, coinPopMat));
+ scene.add(hitFxRoot);
+ }
+ buildHitFxPool();
+ function hitFxLimits(out) {
+ const four = (typeof numPlayers === 'number' && numPlayers >= 3);
+ out.flashes = four ? 4 : 8;
+ out.sparks = four ? 16 : 32;
+ out.coins = 8;
+ out.sparksPerHit = four ? 3 : 4;
+ out.coinBits = four ? 4 : 5;
+ out.cap = four ? HIT_FX_CAP_4P : HIT_FX_CAP;
+ return out;
+ }
+ function quietHitFxBeyond(slots, limit) {
+ for (let i = limit; i < slots.length; i++) {
+ const s = slots[i];
+ if (s.life > 0 || s.mesh.visible) {
+ s.life = 0;
+ s.mesh.visible = false;
+ }
+ }
+ }
+ function enforceHitFxBudget() {
+ const lim = hitFxLimits(hitFxLimitScratch);
+ quietHitFxBeyond(hitFlashes, lim.flashes);
+ quietHitFxBeyond(hitSparks, lim.sparks);
+ quietHitFxBeyond(coinPopBits, lim.coins);
+ return lim;
+ }
+ function igniteHitSlot(slots, limit, cursor, x, y, z, life, vx, vy, vz, base) {
+ if (limit <= 0) return;
+ let slot = null;
+ for (let i = 0; i < limit; i++) {
+ if (slots[i].life <= 0) { slot = slots[i]; break; }
+ }
+ if (!slot) {
+ slot = slots[cursor.n % limit];
+ cursor.n++;
+ }
+ slot.life = life;
+ slot.max = life;
+ slot.vx = vx;
+ slot.vy = vy;
+ slot.vz = vz;
+ slot.base = base;
+ slot.mesh.visible = true;
+ slot.mesh.position.set(x, y, z);
+ slot.mesh.scale.set(base, base, base);
+ }
+ function burstCombatHit(x, y, z) {
+ const lim = enforceHitFxBudget();
+ igniteHitSlot(hitFlashes, lim.flashes, hitFlashCursor, x, y, z, 0.16, 0, 0, 0, 0.55);
+ const n = lim.sparksPerHit;
+ for (let i = 0; i < n; i++) {
+ const o = ((hitSparkDir + i) % 8) * 3;
+ igniteHitSlot(hitSparks, lim.sparks, hitSparkCursor, x, y, z, 0.36, HIT_FX_DIR[o] * 3.4, HIT_FX_DIR[o + 1] * 2.6, HIT_FX_DIR[o + 2] * 3.4, 1);
+ }
+ hitSparkDir = (hitSparkDir + n) % 8;
+ hitFxHits++;
+ hitFxLastX = x;
+ hitFxLastY = y;
+ hitFxLastZ = z;
+ }
+ function spawnCoinPop(x, y, z) {
+ const lim = enforceHitFxBudget();
+ const n = lim.coinBits;
+ for (let i = 0; i < n; i++) {
+ const o = ((coinPopDir + i) % 8) * 3;
+ const lift = i === 0 ? 3.1 : HIT_FX_DIR[o + 1] * 2.1;
+ igniteHitSlot(coinPopBits, lim.coins, coinPopCursor, x, y + 0.15, z, 0.42, HIT_FX_DIR[o] * 1.7, lift, HIT_FX_DIR[o + 2] * 1.7, i === 0 ? 1.4 : 0.9);
+ }
+ coinPopDir = (coinPopDir + n) % 8;
+ hitFxPops++;
+ coinPopLastX = x;
+ coinPopLastY = y;
+ coinPopLastZ = z;
+ }
+ function stepHitPool(slots, limit, dt) {
+ for (let i = 0; i < limit; i++) {
+ const s = slots[i];
+ if (s.life <= 0) continue;
+ s.life -= dt;
+ const u = 1 - s.life / s.max;
+ if (s.kind === 'flash') {
+ const sc = s.base + u * 1.35;
+ s.mesh.scale.set(sc, sc, sc);
+ } else {
+ s.mesh.position.x += s.vx * dt;
+ s.mesh.position.y += s.vy * dt;
+ s.mesh.position.z += s.vz * dt;
+ s.vy -= 7.5 * dt;
+ const sc = s.base * (1 + u * 0.55);
+ s.mesh.scale.set(sc, sc, sc);
+ }
+ if (s.life <= 0) {
+ s.life = 0;
+ s.mesh.visible = false;
+ }
+ }
+ }
+ function updateHitFx(dt) {
+ const lim = enforceHitFxBudget();
+ stepHitPool(hitFlashes, lim.flashes, dt);
+ stepHitPool(hitSparks, lim.sparks, dt);
+ stepHitPool(coinPopBits, lim.coins, dt);
+ }
+ function countLiveHitFx(slots, limit) {
+ let n = 0;
+ for (let i = 0; i < limit; i++) if (slots[i].life > 0 && slots[i].mesh.visible) n++;
+ return n;
+ }
+ function collectFxInfo() {
+ const lim = enforceHitFxBudget();
+ const flashes = countLiveHitFx(hitFlashes, lim.flashes);
+ const sparks = countLiveHitFx(hitSparks, lim.sparks);
+ const coinBits = countLiveHitFx(coinPopBits, lim.coins);
+ const active = flashes + sparks + coinBits;
+ return {
+ cap: lim.cap,
+ cap4p: HIT_FX_CAP_4P,
+ capSolo: HIT_FX_CAP,
+ active: active,
+ flashes: flashes,
+ sparks: sparks,
+ coinBits: coinBits,
+ coinPops: hitFxPops,
+ hits: hitFxHits,
+ sparksPerHit: lim.sparksPerHit,
+ coinBitsPerPop: lim.coinBits,
+ pooled: true,
+ slots: hitFlashes.length + hitSparks.length + coinPopBits.length,
+ sharedMaterials: 3,
+ materialIds: [hitFlashMat.uuid, hitSparkMat.uuid, coinPopMat.uuid],
+ inScene: hitFxRoot.parent === scene,
+ flashVisible: flashes > 0,
+ sparkVisible: sparks > 0,
+ popVisible: coinBits > 0,
+ numPlayers: (typeof numPlayers === 'number') ? numPlayers : 1,
+ lastHit: { x: hitFxLastX, y: hitFxLastY, z: hitFxLastZ },
+ lastPop: { x: coinPopLastX, y: coinPopLastY, z: coinPopLastZ }
+ };
  }
 
  function triggerExplosion(pos, radius, maxDmg, attackerIndex) {
@@ -9455,6 +10425,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
  if (opts && opts.meshScale) mesh.scale.setScalar(opts.meshScale / base.scale);
  if (opts && opts.tint != null) tintMonsterBody(mesh, opts.tint);
+ attachToonOutline(mesh);
  if (customPos) {
  mesh.position.copy(customPos);
  } else {
@@ -9543,7 +10514,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  m.staged = true;
  mesh.position.y = getGroundHeight(mesh.position.x, mesh.position.z);
  }
- mesh.traverse(obj => { if (obj.isMesh) obj.userData.monster = m; });
+ mesh.traverse(obj => { if (obj.isMesh && !(obj.userData && obj.userData.isOutline)) obj.userData.monster = m; });
  monsters.push(m);
  applyMonsterGlow(m);
  return m;
@@ -9914,6 +10885,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
 
  if (d.kind === 'coin') {
  creditWorldCoin(d.coinValue);
+ spawnCoinPop(d.mesh.position.x, d.mesh.position.y, d.mesh.position.z);
  playTone(d.isGold ? 880 : 640, d.isGold ? 1320 : 920, 0.12, 0.14, 'sine');
  updateHUD();
  return;
@@ -10401,7 +11373,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  m.mesh.updateMatrixWorld(true);
  m.mesh.traverse(obj => {
  if (!obj.isMesh || !obj.geometry) return;
- if (obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist) return;
+ if (obj.userData.isOutline || obj.userData.isShield || obj.userData.isCrystal || obj.userData.isFist) return;
  const local = obj.worldToLocal(point.clone());
  if (!obj.geometry.boundingBox) obj.geometry.computeBoundingBox();
  if (!obj.geometry.boundingBox.containsPoint(local)) return;
@@ -10923,7 +11895,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const seen = new Set();
  m.mesh.traverse(function (obj) {
  if (!obj.isMesh || !obj.material || !obj.material.color) return;
- if (obj.userData && obj.userData.frostIce) return;
+ if (obj.userData && (obj.userData.frostIce || obj.userData.isOutline)) return;
  if (obj.material === m.mesh.userData.eyeMat) return;
  const mat = ownMat(obj);
  if (!mat || !mat.color || seen.has(mat)) return;
@@ -12433,6 +13405,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  function tintMonsterBody(mesh, hex) {
  mesh.traverse(obj => {
  if (!obj.isMesh || !obj.material || Array.isArray(obj.material) || !obj.material.color) return;
+ if (obj.userData && obj.userData.isOutline) return;
  if (obj.material === mesh.userData.eyeMat) return;
  const mat = ownMat(obj);
  if (mat && mat.color) mat.color.setHex(hex);
@@ -14070,6 +15043,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const floorHp = Math.round(m.maxHp * 0.35);
  if (m.hp - dealt <= floorHp) {
  m.hp = floorHp;
+ if (hitPoint) burstCombatHit(hitPoint.x, hitPoint.y, hitPoint.z);
  shatterWarden(m);
  return;
  }
@@ -14079,6 +15053,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  hitmarkerEl.style.opacity = '1';
  hitmarkerTimer = 0.11;
  spawnVoxelBurst(hitPoint, isHead ? 0xfef08a : m.base.bodyCol, isHead ? 8 : 4, 4.2);
+ burstCombatHit(hitPoint.x, hitPoint.y, hitPoint.z);
  playTone(isHead ? 950 : 620, 260, 0.05, 0.08, 'triangle');
  }
  if (m.hp <= 0) {
@@ -14216,6 +15191,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const gPct = Math.max(0, Math.round((state.castleHp / state.maxCastleHp) * 100));
  document.getElementById('gate-bar').style.width = `${gPct}%`;
  document.getElementById('gate-hp-text').textContent = `${gPct}%`;
+ syncCastleWear();
 
  paintBossHud();
 
@@ -14715,6 +15691,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (t.recoil > 0) t.recoil = Math.max(0, t.recoil - dt * 0.55);
  }
  }
+ updateHitFx(dt);
  updateViewportShops(dt);
  return;
  }
@@ -15625,6 +16602,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  p.mesh.rotation.y += dt * 4;
  if (p.life <= 0) { scene.remove(p.mesh); particles.splice(i, 1); }
  }
+ updateHitFx(dt);
  for (let i = tracers.length - 1; i >= 0; i--) {
  const t = tracers[i];
  t.life -= dt;
@@ -16499,7 +17477,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const root = document.createElement('div');
  root.className = 'vp-shop';
  root.id = 'vp-shop-' + i;
- root.innerHTML = '<div class="shop-card"><div class="shop-top"><div><h2>CASTLE ARMORY</h2><div class="shop-active-wep"></div></div><div class="shop-wallet"></div></div><div class="shop-tabs"><button class="shop-tab active" data-tab="weapons">Heavy &amp; Spec Weapons</button><button class="shop-tab" data-tab="upgrades">Weapon Upgrades</button><button class="shop-tab" data-tab="ammo">Special Ammo</button><button class="shop-tab" data-tab="castleworks">Castleworks</button></div><div class="shop-body"></div><div class="shop-foot"><button class="shop-refill-btn btn btn-sec">Free Ammo Refill</button><button class="shop-close-btn btn">Close [B]</button></div></div>';
+ root.innerHTML = '<div class="shop-card bb-menu-panel"><div class="shop-top"><div><h2>CASTLE ARMORY</h2><div class="shop-active-wep"></div></div><div class="shop-wallet bb-gold"></div></div><div class="shop-tabs"><button class="shop-tab active" data-tab="weapons">Heavy &amp; Spec Weapons</button><button class="shop-tab" data-tab="upgrades">Weapon Upgrades</button><button class="shop-tab" data-tab="ammo">Special Ammo</button><button class="shop-tab" data-tab="castleworks">Castleworks</button></div><div class="shop-body"></div><div class="shop-foot"><button class="shop-refill-btn btn btn-sec">Free Ammo Refill</button><button class="shop-close-btn btn">Close [B]</button></div></div>';
  host.appendChild(root);
  bindViewportShopScroll(root);
  const session = { index: i, open: false, tab: 'weapons', root: root, focusEl: null, prev: {}, cooldown: 0, fitted: false };
@@ -17230,6 +18208,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  g.add(weaponHolder);
  g.userData.weaponHolder = weaponHolder;
  g.userData.equippedWeaponId = null;
+ attachToonOutline(g);
  return g;
  }
 
@@ -17249,6 +18228,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  gunModel.scale.setScalar(1.35);
  gunModel.rotation.y = Math.PI; // point muzzle forward (-Z of avatar)
  holder.add(gunModel);
+ attachToonOutline(gunModel);
  }
 
  function prepareViewmodel(root) {
@@ -17506,7 +18486,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  const stats = document.createElement('div');
  stats.className = 'vp-stats';
  const hpBox = document.createElement('div');
- hpBox.className = 'vp-box';
+ hpBox.className = 'vp-box bb-hud-panel';
  const hpTxt = document.createElement('div');
  hpTxt.id = `vp-hp-txt-${i}`;
  hpTxt.textContent = 'HP 100 / 100';
@@ -17520,7 +18500,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  hpBox.appendChild(hpTxt);
  hpBox.appendChild(hpBg);
  const wepBox = document.createElement('div');
- wepBox.className = 'vp-box';
+ wepBox.className = 'vp-box bb-hud-panel';
  wepBox.id = `vp-wep-${i}`;
  const wepTxt = document.createElement('div');
  wepTxt.id = `vp-wep-txt-${i}`;
@@ -17553,7 +18533,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  turret.className = 'vp-turret';
  turret.id = 'vp-turret-' + i;
  const walletEl = document.createElement('div');
- walletEl.className = 'vp-wallet';
+ walletEl.className = 'vp-wallet bb-gold';
  walletEl.id = 'vp-wallet-' + i;
  walletEl.textContent = walletText(i);
  vp.appendChild(ch);
@@ -17994,6 +18974,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  }
 
  function renderSplitScreens() {
+ syncCastleWear();
  refreshScopeChrome();
  const W = window.innerWidth, H = window.innerHeight;
  if (numPlayers === 1) {
@@ -18102,6 +19083,48 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  if (session && session.open) { session.fitted = false; fitViewportShop(session); }
  }
  });
+
+ function hudStyleInfo() {
+ const read = (el) => {
+ if (!el) return null;
+ const cs = window.getComputedStyle(el);
+ return {
+ cls: String(el.className || ''),
+ color: cs.color,
+ backgroundImage: cs.backgroundImage,
+ borderColor: cs.borderTopColor,
+ shadow: cs.boxShadow,
+ letterSpacing: cs.letterSpacing
+ };
+ };
+ const names = ['pause-snow-btn', 'pause-resume-btn', 'pause-screen', 'pause-card', 'shop-screen', 'shop-wallet', 'shop-body', 'start-screen', 'play-btn', 'gameover-screen', 'go-wave', 'go-kills', 'go-level', 'go-weapon', 'go-high-score', 'coin-text', 'currency-hud', 'player-panel', 'top-panel', 'weapon-panel', 'gift-screen', 'options-screen', 'theme-picker'];
+ const ids = {};
+ for (let i = 0; i < names.length; i++) ids[names[i]] = !!document.getElementById(names[i]);
+ const tabs = document.querySelectorAll('#shop-screen .shop-tab');
+ const wallets = [];
+ for (let w = 0; w < 4; w++) {
+ const el = document.getElementById('vp-wallet-' + w);
+ wallets.push(el ? { cls: String(el.className || ''), text: el.textContent } : null);
+ }
+ const coin = document.getElementById('coin-text');
+ const strip = document.querySelector('#pause-card .controls-strip');
+ const giftStrip = document.querySelector('#gift-card .controls-strip');
+ return {
+ polish: document.body.classList.contains('bb-polish'),
+ kind: 'bb-polish',
+ gold: read(coin),
+ wallet: read(document.getElementById('shop-wallet')),
+ hud: read(document.getElementById('player-panel')),
+ menu: read(document.getElementById('pause-card')),
+ ids: ids,
+ shopTabs: tabs.length,
+ snow: (document.getElementById('pause-snow-btn') || {}).textContent || '',
+ pauseCopy: strip ? strip.textContent : '',
+ giftCopy: giftStrip ? giftStrip.textContent : '',
+ coin: coin ? coin.textContent : '',
+ wallets: wallets
+ };
+ }
 
  window.__bastionDebug = {
  clockSeedNonce() { return seedNonce; },
@@ -18647,6 +19670,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  courtyardInfo() { return courtyardInfo(); },
  setTheme(id) { return setTheme(id); },
  themeInfo() { return themeInfo(); },
+ themeLook() { return themeLook(); },
  themePicker() {
  const chip = document.getElementById('theme-chip');
  const buttons = Array.from(document.querySelectorAll('#theme-picker .theme-tab')).map(btn => {
@@ -18932,6 +19956,19 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  },
  monsterGlow(theme) { return monsterGlow(theme); },
  foeGlow(index) { return foeGlow(index); },
+ hasOutlines() { return !!collectOutlineInfo().hasOutlines; },
+ outlineInfo() { return collectOutlineInfo(); },
+ fxInfo() { return collectFxInfo(); },
+ castleWear() { return castleWearInfo(); },
+ hudStyle() { return hudStyleInfo(); },
+ burstHit(x, y, z) {
+ burstCombatHit(+x || 0, +y || 0, +z || 0);
+ return collectFxInfo();
+ },
+ coinPop(x, y, z) {
+ spawnCoinPop(+x || 0, +y || 0, +z || 0);
+ return collectFxInfo();
+ },
  plantTripwire(index) { return plantTripwire(index | 0, false); },
  pendingStake(index) {
  const s = pendingStakes[index | 0];
@@ -19527,7 +20564,7 @@ let menuPadCooldown = 0, menuPadFocusIdx = 0, menuPadFocusEl = null, menuPadOver
  let maxXY = 0;
  m.mesh.updateMatrixWorld(true);
  m.mesh.traverse(obj => {
- if (!obj.isMesh) return;
+ if (!obj.isMesh || (obj.userData && obj.userData.isOutline)) return;
  meshes++;
  if (obj.castShadow) casters++;
  if (obj.userData && obj.userData.isPlate) plates++;
